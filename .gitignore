@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+.env
+.env.*
+.codex
+.DS_Store
+outputs/
+results/*
+!results/.gitkeep
+runs/
+wandb/
+mlruns/
+*.pkl
+*.pt
+*.pth
+*.npy
+*.npz
+*.csv
+related papers/
