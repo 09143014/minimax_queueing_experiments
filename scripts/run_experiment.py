@@ -31,7 +31,10 @@ from adversarial_queueing.evaluation.rollout import (
     make_nnq_defender_policy,
     random_attacker_policy,
 )
-from adversarial_queueing.evaluation.routing_policy import bvi_routing_policy_inspection
+from adversarial_queueing.evaluation.routing_policy import (
+    amq_routing_policy_inspection,
+    bvi_routing_policy_inspection,
+)
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
 from adversarial_queueing.evaluation.policy_grid import (
     amq_policy_grid,
@@ -153,8 +156,6 @@ def main() -> int:
         return 0
 
     if algorithm == "amq":
-        if env_name != "service_rate_control":
-            raise ValueError("AMQ runner currently supports only service_rate_control")
         amq_config = build_amq_config(config)
         result = LinearAMQTrainer(env, amq_config).train()
         write_jsonl(run_dir / "metrics.jsonl", result.metrics)
@@ -167,21 +168,43 @@ def main() -> int:
             config=evaluation_config,
         )
         write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
-        policy_rows, policy_summary = amq_policy_grid(env, trainer, policy_grid_config)
-        write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+        if env_name == "service_rate_control":
+            policy_rows, policy_summary = amq_policy_grid(env, trainer, policy_grid_config)
+            write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+            policy_summary_key = "policy_grid"
+            policy_summary_value = policy_summary
+        elif env_name == "routing":
+            bvi_config = config.get("bvi", {})
+            max_queue_length = int(
+                bvi_config.get(
+                    "max_queue_length",
+                    config.get("policy_grid", {}).get("max_state", 3),
+                )
+            )
+            policy_rows, policy_summary = amq_routing_policy_inspection(
+                env,
+                trainer,
+                max_queue_length=max_queue_length,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
+            policy_summary_key = "policy_inspection"
+            policy_summary_value = policy_summary
+        else:
+            raise ValueError(f"AMQ runner does not support env.name: {env_name}")
         final_td_error = result.metrics[-1]["td_error"] if result.metrics else 0.0
         summary = {
             "algorithm": "amq",
-            "benchmark": "service_rate_control",
+            "benchmark": env_name,
             "feature_set": amq_config.feature_set,
             "total_steps": amq_config.total_steps,
             "seed": amq_config.seed,
-            "final_state": result.final_state,
+            "final_state": _json_state(result.final_state),
             "final_td_error": final_td_error,
             "weight_norm": float(np.linalg.norm(result.weights)),
             "num_logged_metrics": len(result.metrics),
             "evaluation": evaluation.summary,
-            "policy_grid": policy_summary,
+            policy_summary_key: policy_summary_value,
         }
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
@@ -282,6 +305,12 @@ def _initial_state(env_name: str, env_config):
     if env_name == "routing":
         return env_config.initial_state_value
     raise ValueError(f"unsupported env.name for initial state: {env_name}")
+
+
+def _json_state(state):
+    if isinstance(state, tuple):
+        return [int(value) for value in state]
+    return int(state)
 
 
 def _git_commit() -> str:

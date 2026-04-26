@@ -8,8 +8,10 @@ from adversarial_queueing.algorithms.bvi import (
     bounded_queue_states,
     run_bounded_value_iteration,
 )
+from adversarial_queueing.algorithms.amq import AMQConfig, LinearAMQTrainer
 from adversarial_queueing.envs.routing import RoutingConfig, RoutingEnv
 from adversarial_queueing.evaluation.routing_policy import bvi_routing_policy_inspection
+from adversarial_queueing.evaluation.routing_policy import amq_routing_policy_inspection
 from adversarial_queueing.evaluation.rollout import (
     EvaluationConfig,
     evaluate_policy,
@@ -47,6 +49,20 @@ class RoutingPolicyInspectionTests(unittest.TestCase):
         self.assertIn("nominal_targets", rows[0])
         self.assertEqual(summary["num_policy_states"], len(result.values))
         self.assertIn("num_states_p_defend_at_least_threshold", summary)
+
+    def test_amq_policy_inspection_exports_bounded_grid(self):
+        env, _result = self.make_result()
+        trainer = LinearAMQTrainer(
+            env,
+            AMQConfig(feature_set="basic", total_steps=10, eta0=0.001, seed=7),
+        )
+        trainer.train()
+
+        rows, summary = amq_routing_policy_inspection(env, trainer, max_queue_length=2)
+
+        self.assertEqual(len(rows), 9)
+        self.assertEqual(summary["num_policy_states"], 9)
+        self.assertEqual(rows[0]["method"], "amq")
 
     def test_rollout_summarizes_tuple_states_by_load(self):
         env, result = self.make_result()

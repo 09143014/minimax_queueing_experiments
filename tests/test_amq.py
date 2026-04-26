@@ -7,6 +7,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from adversarial_queueing.algorithms.amq import AMQConfig, LinearAMQTrainer
+from adversarial_queueing.envs.routing import RoutingConfig, RoutingEnv
 from adversarial_queueing.envs.service_rate_control import (
     ServiceRateControlConfig,
     ServiceRateControlEnv,
@@ -39,7 +40,35 @@ class AMQTests(unittest.TestCase):
         self.assertIn("td_error", result.metrics[-1])
         self.assertIn("minimax_value_next", result.metrics[-1])
 
+    def test_routing_training_smoke_logs_tuple_states(self):
+        env = RoutingEnv(
+            RoutingConfig(
+                lambda_arrival=2.0,
+                mu_rates=(1.0, 1.5, 2.0),
+                gamma=0.95,
+                uniformization_rate=6.5,
+                bvi_max_queue_length=3,
+            )
+        )
+        trainer = LinearAMQTrainer(
+            env,
+            AMQConfig(
+                feature_set="basic",
+                total_steps=25,
+                eta0=0.001,
+                seed=123,
+                log_interval=5,
+            ),
+        )
+
+        result = trainer.train()
+
+        self.assertEqual(result.metrics[-1]["step"], 25)
+        self.assertTrue(np.isfinite(result.weights).all())
+        self.assertGreater(np.linalg.norm(result.weights), 0.0)
+        self.assertIsInstance(result.final_state, tuple)
+        self.assertIsInstance(result.metrics[-1]["state"], list)
+
 
 if __name__ == "__main__":
     unittest.main()
-

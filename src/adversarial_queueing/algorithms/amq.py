@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Hashable
 
 import numpy as np
 
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
+from adversarial_queueing.envs.base import BaseAdversarialQueueEnv
+from adversarial_queueing.envs.routing import RoutingEnv
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
+from adversarial_queueing.features.routing_features import routing_feature_dim, routing_features
 from adversarial_queueing.features.service_rate_features import (
     service_rate_feature_dim,
     service_rate_features,
@@ -31,23 +34,20 @@ class AMQConfig:
 class AMQResult:
     weights: np.ndarray
     metrics: list[dict[str, Any]]
-    final_state: int
+    final_state: Hashable
 
 
 class LinearAMQTrainer:
-    """Small AMQ trainer used for service-rate-control smoke experiments."""
+    """Small AMQ trainer used for benchmark smoke experiments."""
 
-    def __init__(self, env: ServiceRateControlEnv, config: AMQConfig):
+    def __init__(self, env: BaseAdversarialQueueEnv, config: AMQConfig):
         self.env = env
         self.config = config
         self.rng = np.random.default_rng(config.seed)
-        self.attacker_actions = tuple(env.attacker_actions(env.config.initial_state))
-        self.defender_actions = tuple(env.defender_actions(env.config.initial_state))
-        dim = service_rate_feature_dim(
-            feature_set=config.feature_set,
-            num_attacker_actions=len(self.attacker_actions),
-            num_defender_actions=len(self.defender_actions),
-        )
+        initial_state = self._initial_state()
+        self.attacker_actions = tuple(env.attacker_actions(initial_state))
+        self.defender_actions = tuple(env.defender_actions(initial_state))
+        dim = self._feature_dim()
         self.weights = np.zeros(dim, dtype=float)
 
     def train(self) -> AMQResult:
@@ -73,10 +73,10 @@ class LinearAMQTrainer:
                 metrics.append(
                     {
                         "step": step,
-                        "state": int(state),
+                        "state": _json_state(state),
                         "attacker_action": attacker_action,
                         "defender_action": defender_action,
-                        "next_state": int(next_state),
+                        "next_state": _json_state(next_state),
                         "cost": float(cost),
                         "td_error": td_error,
                         "weight_norm": float(np.linalg.norm(self.weights)),
@@ -84,32 +84,66 @@ class LinearAMQTrainer:
                         "minimax_value_next": float(next_value),
                     }
                 )
-            state = int(next_state)
+            state = next_state
 
-        return AMQResult(weights=self.weights.copy(), metrics=metrics, final_state=int(state))
+        return AMQResult(weights=self.weights.copy(), metrics=metrics, final_state=state)
 
-    def q_value(self, state: int, attacker_action: int, defender_action: int) -> float:
+    def q_value(self, state: Hashable, attacker_action: int, defender_action: int) -> float:
         return float(self._features(state, attacker_action, defender_action) @ self.weights)
 
-    def q_matrix(self, state: int) -> np.ndarray:
+    def q_matrix(self, state: Hashable) -> np.ndarray:
         matrix = np.zeros((len(self.attacker_actions), len(self.defender_actions)), dtype=float)
         for ai, attacker_action in enumerate(self.attacker_actions):
             for bi, defender_action in enumerate(self.defender_actions):
                 matrix[ai, bi] = self.q_value(state, attacker_action, defender_action)
         return matrix
 
-    def value(self, state: int) -> float:
+    def value(self, state: Hashable) -> float:
         return float(solve_zero_sum_matrix_game(self.q_matrix(state))["value"])
 
-    def _features(self, state: int, attacker_action: int, defender_action: int) -> np.ndarray:
-        return service_rate_features(
-            state=state,
-            attacker_action=attacker_action,
-            defender_action=defender_action,
-            feature_set=self.config.feature_set,
-            num_attacker_actions=len(self.attacker_actions),
-            num_defender_actions=len(self.defender_actions),
-        )
+    def _features(
+        self, state: Hashable, attacker_action: int, defender_action: int
+    ) -> np.ndarray:
+        if isinstance(self.env, ServiceRateControlEnv):
+            return service_rate_features(
+                state=int(state),
+                attacker_action=attacker_action,
+                defender_action=defender_action,
+                feature_set=self.config.feature_set,
+                num_attacker_actions=len(self.attacker_actions),
+                num_defender_actions=len(self.defender_actions),
+            )
+        if isinstance(self.env, RoutingEnv):
+            if not isinstance(state, tuple):
+                raise ValueError("routing AMQ requires tuple states")
+            return routing_features(
+                state=state,
+                attacker_action=attacker_action,
+                defender_action=defender_action,
+                feature_set=self.config.feature_set,
+            )
+        raise ValueError(f"unsupported AMQ environment: {type(self.env).__name__}")
+
+    def _feature_dim(self) -> int:
+        if isinstance(self.env, ServiceRateControlEnv):
+            return service_rate_feature_dim(
+                feature_set=self.config.feature_set,
+                num_attacker_actions=len(self.attacker_actions),
+                num_defender_actions=len(self.defender_actions),
+            )
+        if isinstance(self.env, RoutingEnv):
+            return routing_feature_dim(
+                num_queues=self.env.config.num_queues,
+                feature_set=self.config.feature_set,
+            )
+        raise ValueError(f"unsupported AMQ environment: {type(self.env).__name__}")
+
+    def _initial_state(self) -> Hashable:
+        if isinstance(self.env, ServiceRateControlEnv):
+            return self.env.config.initial_state
+        if isinstance(self.env, RoutingEnv):
+            return self.env.config.initial_state_value
+        return self.env.reset(seed=self.config.seed)
 
     def _learning_rate(self, step: int) -> float:
         if self.config.learning_rate_schedule == "constant":
@@ -118,3 +152,8 @@ class LinearAMQTrainer:
             return float(self.config.eta0 / (step**self.config.decay_power))
         raise ValueError(f"unknown learning_rate_schedule: {self.config.learning_rate_schedule}")
 
+
+def _json_state(state: Hashable) -> int | list[int]:
+    if isinstance(state, tuple):
+        return [int(value) for value in state]
+    return int(state)

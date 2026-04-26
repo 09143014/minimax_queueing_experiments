@@ -6,6 +6,7 @@ from typing import Any, Hashable
 
 import numpy as np
 
+from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import BVIResult
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
 from adversarial_queueing.envs.routing import RoutingEnv, State
@@ -23,24 +24,26 @@ def bvi_routing_policy_inspection(
         if not isinstance(state, tuple):
             raise ValueError("routing policy inspection requires tuple states")
         game = _bvi_game_at_state(env, result, state)
-        defender_strategy = game["defender_strategy"]
-        rows.append(
-            {
-                "method": "bvi",
-                "state": list(state),
-                "total_queue": sum(state),
-                "imbalance": max(state) - min(state),
-                "nominal_targets": list(
-                    env.routed_arrival_targets(state, attacker_action=0, defender_action=0)
-                ),
-                "attacked_targets": list(
-                    env.routed_arrival_targets(state, attacker_action=1, defender_action=0)
-                ),
-                "p_no_defend": float(defender_strategy[0]),
-                "p_defend": float(defender_strategy[1]),
-                "value": float(game["value"]),
-            }
-        )
+        rows.append(_policy_row("bvi", env, state, game))
+    return rows, _summary(rows, probability_threshold)
+
+
+def amq_routing_policy_inspection(
+    env: RoutingEnv,
+    trainer: LinearAMQTrainer,
+    max_queue_length: int,
+    probability_threshold: float = 0.5,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Inspect AMQ defender strategies across a bounded routing state grid."""
+
+    rows: list[dict[str, Any]] = []
+    states = sorted(
+        _routing_states(env.config.num_queues, max_queue_length),
+        key=_state_sort_key,
+    )
+    for state in states:
+        game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        rows.append(_policy_row("amq", env, state, game))
     return rows, _summary(rows, probability_threshold)
 
 
@@ -68,6 +71,32 @@ def _bvi_game_at_state(env: RoutingEnv, result: BVIResult, state: State) -> dict
     return solve_zero_sum_matrix_game(payoff)
 
 
+def _policy_row(
+    method: str,
+    env: RoutingEnv,
+    state: State,
+    game: dict[str, Any],
+) -> dict[str, Any]:
+    defender_strategy = game["defender_strategy"]
+    if defender_strategy.shape[0] != 2:
+        raise ValueError("routing policy inspection expects two defender actions")
+    return {
+        "method": method,
+        "state": list(state),
+        "total_queue": sum(state),
+        "imbalance": max(state) - min(state),
+        "nominal_targets": list(
+            env.routed_arrival_targets(state, attacker_action=0, defender_action=0)
+        ),
+        "attacked_targets": list(
+            env.routed_arrival_targets(state, attacker_action=1, defender_action=0)
+        ),
+        "p_no_defend": float(defender_strategy[0]),
+        "p_defend": float(defender_strategy[1]),
+        "value": float(game["value"]),
+    }
+
+
 def _summary(
     rows: list[dict[str, Any]],
     probability_threshold: float,
@@ -90,6 +119,19 @@ def _bounded_state(state: Hashable, max_queue_length: int) -> Hashable:
     if isinstance(state, tuple):
         return tuple(min(int(value), max_queue_length) for value in state)
     return min(int(state), max_queue_length)
+
+
+def _routing_states(num_queues: int, max_queue_length: int) -> list[State]:
+    if num_queues <= 0:
+        raise ValueError("num_queues must be positive")
+    states: list[State] = [()]
+    for _ in range(num_queues):
+        states = [
+            (*prefix, value)
+            for prefix in states
+            for value in range(max_queue_length + 1)
+        ]
+    return states
 
 
 def _state_sort_key(state: Hashable) -> tuple[int, tuple[int, ...]]:
