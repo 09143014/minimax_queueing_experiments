@@ -25,9 +25,11 @@ from adversarial_queueing.evaluation.rollout import (
     make_bvi_defender_policy,
     random_attacker_policy,
 )
+from adversarial_queueing.evaluation.policy_grid import amq_policy_grid, bvi_policy_grid
 from adversarial_queueing.utils.config import (
     build_amq_config,
     build_evaluation_config,
+    build_policy_grid_config,
     build_service_rate_config,
     load_config,
 )
@@ -48,6 +50,7 @@ def main() -> int:
     env = ServiceRateControlEnv(env_config)
     algorithm = config["algorithm"]["name"]
     evaluation_config = build_evaluation_config(config)
+    policy_grid_config = build_policy_grid_config(config)
 
     run_dir = create_run_dir(
         config["experiment"].get("output_dir", "results"),
@@ -81,7 +84,10 @@ def main() -> int:
             config=evaluation_config,
         )
         write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
+        policy_rows, policy_summary = bvi_policy_grid(env, result, policy_grid_config)
+        write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
         summary["evaluation"] = evaluation.summary
+        summary["policy_grid"] = policy_summary
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
         print(
@@ -106,6 +112,8 @@ def main() -> int:
             config=evaluation_config,
         )
         write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
+        policy_rows, policy_summary = amq_policy_grid(env, trainer, policy_grid_config)
+        write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
         final_td_error = result.metrics[-1]["td_error"] if result.metrics else 0.0
         summary = {
             "algorithm": "amq",
@@ -118,6 +126,7 @@ def main() -> int:
             "weight_norm": float(np.linalg.norm(result.weights)),
             "num_logged_metrics": len(result.metrics),
             "evaluation": evaluation.summary,
+            "policy_grid": policy_summary,
         }
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")

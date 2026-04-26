@@ -9,6 +9,7 @@ import yaml
 
 from adversarial_queueing.algorithms.amq import AMQConfig
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlConfig
+from adversarial_queueing.evaluation.policy_grid import PolicyGridConfig
 from adversarial_queueing.evaluation.rollout import EvaluationConfig
 
 
@@ -71,5 +72,15 @@ def build_evaluation_config(data: dict[str, Any]) -> EvaluationConfig:
             None
             if evaluation.get("boundary_state") is None
             else int(evaluation["boundary_state"])
+        ),
+    )
+
+
+def build_policy_grid_config(data: dict[str, Any]) -> PolicyGridConfig:
+    policy_grid = data.get("policy_grid", {})
+    return PolicyGridConfig(
+        max_state=int(policy_grid.get("max_state", 10)),
+        high_probability_threshold=float(
+            policy_grid.get("high_probability_threshold", 0.5)
         ),
     )

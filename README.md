@@ -14,6 +14,7 @@ The first runnable baseline implements:
 - a bounded value-iteration smoke path;
 - a linear AMQ smoke path for service-rate-control;
 - shared rollout evaluation for BVI and AMQ smoke runs;
+- policy-grid export for service-rate threshold inspection;
 - tests for the minimax solver and service-rate-control dynamics.
 
 Routing, polling, AMQ, and NNQ will be added in focused follow-up changes.

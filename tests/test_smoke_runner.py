@@ -26,9 +26,12 @@ class SmokeRunnerTests(unittest.TestCase):
         self.assertIn("summary:", completed.stdout)
         run_dir = _run_dir_from_stdout(completed.stdout)
         self.assertTrue((run_dir / "evaluation.jsonl").exists())
+        self.assertTrue((run_dir / "policy_grid.jsonl").exists())
         summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
         self.assertIn("evaluation", summary)
         self.assertIn("average_cost_mean", summary["evaluation"])
+        self.assertIn("policy_grid", summary)
+        self.assertIn("first_state_p_high_at_least_threshold", summary["policy_grid"])
 
     def test_amq_smoke_config_runs(self):
         root = Path(__file__).resolve().parents[1]
@@ -50,9 +53,12 @@ class SmokeRunnerTests(unittest.TestCase):
         self.assertIn("final_td_error=", completed.stdout)
         run_dir = _run_dir_from_stdout(completed.stdout)
         self.assertTrue((run_dir / "evaluation.jsonl").exists())
+        self.assertTrue((run_dir / "policy_grid.jsonl").exists())
         summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
         self.assertIn("evaluation", summary)
         self.assertIn("average_cost_mean", summary["evaluation"])
+        self.assertIn("policy_grid", summary)
+        self.assertIn("first_state_p_high_at_least_threshold", summary["policy_grid"])
 
 
 def _run_dir_from_stdout(stdout: str) -> Path:
