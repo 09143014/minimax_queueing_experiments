@@ -26,8 +26,10 @@ from adversarial_queueing.evaluation.rollout import (
     random_attacker_policy,
 )
 from adversarial_queueing.evaluation.policy_grid import amq_policy_grid, bvi_policy_grid
+from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
 from adversarial_queueing.utils.config import (
     build_amq_config,
+    build_bvi_sensitivity_config,
     build_evaluation_config,
     build_policy_grid_config,
     build_service_rate_config,
@@ -136,6 +138,30 @@ def main() -> int:
             f"final_td_error={final_td_error:.6g} "
             f"weight_norm={summary['weight_norm']:.6g} "
             f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g}"
+        )
+        return 0
+
+    if algorithm == "bvi_sensitivity":
+        sensitivity_config = build_bvi_sensitivity_config(config)
+        rows, sensitivity_summary = run_bvi_sensitivity(
+            env_config,
+            sensitivity_config,
+            evaluation_config,
+            policy_grid_config,
+        )
+        write_jsonl(run_dir / "sensitivity.jsonl", rows)
+        summary = {
+            "algorithm": "bvi_sensitivity",
+            "benchmark": "service_rate_control",
+            "sensitivity": sensitivity_summary,
+        }
+        write_json(run_dir / "summary.json", summary)
+        print(f"wrote {run_dir}")
+        print(
+            "summary: "
+            f"bounds={sensitivity_summary['bounds']} "
+            f"value_range={sensitivity_summary['value_range_at_eval_state']:.6g} "
+            f"threshold_stable={sensitivity_summary['policy_high_threshold_stable']}"
         )
         return 0
 

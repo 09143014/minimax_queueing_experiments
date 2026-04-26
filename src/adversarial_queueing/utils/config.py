@@ -9,6 +9,7 @@ import yaml
 
 from adversarial_queueing.algorithms.amq import AMQConfig
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlConfig
+from adversarial_queueing.evaluation.bvi_sensitivity import BVISensitivityConfig
 from adversarial_queueing.evaluation.policy_grid import PolicyGridConfig
 from adversarial_queueing.evaluation.rollout import EvaluationConfig
 
@@ -83,4 +84,15 @@ def build_policy_grid_config(data: dict[str, Any]) -> PolicyGridConfig:
         high_probability_threshold=float(
             policy_grid.get("high_probability_threshold", 0.5)
         ),
+    )
+
+
+def build_bvi_sensitivity_config(data: dict[str, Any]) -> BVISensitivityConfig:
+    sensitivity = data.get("bvi_sensitivity", {})
+    return BVISensitivityConfig(
+        max_queue_lengths=tuple(int(x) for x in sensitivity["max_queue_lengths"]),
+        tolerance=float(sensitivity.get("tolerance", 1e-6)),
+        max_iterations=int(sensitivity.get("max_iterations", 2000)),
+        boundary_mode=str(sensitivity.get("boundary_mode", "clip")),
+        eval_state=int(sensitivity.get("eval_state", 0)),
     )

@@ -60,6 +60,30 @@ class SmokeRunnerTests(unittest.TestCase):
         self.assertIn("policy_grid", summary)
         self.assertIn("first_state_p_high_at_least_threshold", summary["policy_grid"])
 
+    def test_bvi_sensitivity_config_runs(self):
+        root = Path(__file__).resolve().parents[1]
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(root / "scripts" / "run_experiment.py"),
+                "--config",
+                str(root / "configs" / "bvi_sensitivity.yaml"),
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("threshold_stable=", completed.stdout)
+        run_dir = _run_dir_from_stdout(completed.stdout)
+        self.assertTrue((run_dir / "sensitivity.jsonl").exists())
+        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+        self.assertIn("sensitivity", summary)
+        self.assertIn("value_range_at_eval_state", summary["sensitivity"])
+
 
 def _run_dir_from_stdout(stdout: str) -> Path:
     for line in stdout.splitlines():

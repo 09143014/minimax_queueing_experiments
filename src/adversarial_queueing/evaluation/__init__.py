@@ -1,5 +1,9 @@
 """Evaluation utilities."""
 
+from adversarial_queueing.evaluation.bvi_sensitivity import (
+    BVISensitivityConfig,
+    run_bvi_sensitivity,
+)
 from adversarial_queueing.evaluation.rollout import (
     EvaluationConfig,
     RolloutResult,
@@ -16,6 +20,7 @@ from adversarial_queueing.evaluation.policy_grid import (
 
 __all__ = [
     "EvaluationConfig",
+    "BVISensitivityConfig",
     "PolicyGridConfig",
     "RolloutResult",
     "amq_policy_grid",
@@ -24,4 +29,5 @@ __all__ = [
     "make_amq_defender_policy",
     "make_bvi_defender_policy",
     "random_attacker_policy",
+    "run_bvi_sensitivity",
 ]
