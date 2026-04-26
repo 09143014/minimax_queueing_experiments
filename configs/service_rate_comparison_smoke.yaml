@@ -1,0 +1,11 @@
+experiment:
+  name: service_rate_control_smoke_comparison
+  output_dir: results
+
+runs:
+  - method: bvi
+    config: configs/smoke.yaml
+  - method: amq
+    config: configs/amq_smoke.yaml
+  - method: nnq
+    config: configs/nnq_smoke.yaml

@@ -1,0 +1,12 @@
+experiment:
+  name: service_rate_control_debug_comparison
+  output_dir: results
+
+runs:
+  - method: bvi
+    config: configs/bvi_debug.yaml
+  - method: amq
+    config: configs/amq_debug.yaml
+  - method: nnq
+    config: configs/nnq_debug.yaml
+
