@@ -19,7 +19,18 @@ if str(SRC) not in sys.path:
 from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import run_bounded_value_iteration
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
-from adversarial_queueing.utils.config import build_amq_config, build_service_rate_config, load_config
+from adversarial_queueing.evaluation.rollout import (
+    evaluate_policy,
+    make_amq_defender_policy,
+    make_bvi_defender_policy,
+    random_attacker_policy,
+)
+from adversarial_queueing.utils.config import (
+    build_amq_config,
+    build_evaluation_config,
+    build_service_rate_config,
+    load_config,
+)
 from adversarial_queueing.utils.output import create_run_dir, write_json, write_jsonl
 
 
@@ -36,6 +47,7 @@ def main() -> int:
     env_config = build_service_rate_config(config)
     env = ServiceRateControlEnv(env_config)
     algorithm = config["algorithm"]["name"]
+    evaluation_config = build_evaluation_config(config)
 
     run_dir = create_run_dir(
         config["experiment"].get("output_dir", "results"),
@@ -62,13 +74,22 @@ def main() -> int:
             "value_at_initial_state": result.values[env_config.initial_state],
             "max_queue_length": int(bvi_config["max_queue_length"]),
         }
+        evaluation = evaluate_policy(
+            env,
+            defender_policy=make_bvi_defender_policy(result),
+            attacker_policy=random_attacker_policy,
+            config=evaluation_config,
+        )
+        write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
+        summary["evaluation"] = evaluation.summary
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
         print(
             "summary: "
             f"iterations={result.iterations} "
             f"residual={result.residual:.6g} "
-            f"V0={result.values[env_config.initial_state]:.6g}"
+            f"V0={result.values[env_config.initial_state]:.6g} "
+            f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g}"
         )
         return 0
 
@@ -76,6 +97,15 @@ def main() -> int:
         amq_config = build_amq_config(config)
         result = LinearAMQTrainer(env, amq_config).train()
         write_jsonl(run_dir / "metrics.jsonl", result.metrics)
+        trainer = LinearAMQTrainer(env, amq_config)
+        trainer.weights = result.weights.copy()
+        evaluation = evaluate_policy(
+            env,
+            defender_policy=make_amq_defender_policy(trainer),
+            attacker_policy=random_attacker_policy,
+            config=evaluation_config,
+        )
+        write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
         final_td_error = result.metrics[-1]["td_error"] if result.metrics else 0.0
         summary = {
             "algorithm": "amq",
@@ -87,6 +117,7 @@ def main() -> int:
             "final_td_error": final_td_error,
             "weight_norm": float(np.linalg.norm(result.weights)),
             "num_logged_metrics": len(result.metrics),
+            "evaluation": evaluation.summary,
         }
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
@@ -94,7 +125,8 @@ def main() -> int:
             "summary: "
             f"steps={amq_config.total_steps} "
             f"final_td_error={final_td_error:.6g} "
-            f"weight_norm={summary['weight_norm']:.6g}"
+            f"weight_norm={summary['weight_norm']:.6g} "
+            f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g}"
         )
         return 0
 

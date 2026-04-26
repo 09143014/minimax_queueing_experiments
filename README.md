@@ -13,6 +13,7 @@ The first runnable baseline implements:
 - a shared zero-sum matrix-game solver;
 - a bounded value-iteration smoke path;
 - a linear AMQ smoke path for service-rate-control;
+- shared rollout evaluation for BVI and AMQ smoke runs;
 - tests for the minimax solver and service-rate-control dynamics.
 
 Routing, polling, AMQ, and NNQ will be added in focused follow-up changes.

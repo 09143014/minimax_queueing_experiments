@@ -9,6 +9,7 @@ import yaml
 
 from adversarial_queueing.algorithms.amq import AMQConfig
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlConfig
+from adversarial_queueing.evaluation.rollout import EvaluationConfig
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -55,5 +56,20 @@ def build_amq_config(data: dict[str, Any]) -> AMQConfig:
             None
             if amq.get("weight_clip") is None
             else float(amq["weight_clip"])
+        ),
+    )
+
+
+def build_evaluation_config(data: dict[str, Any]) -> EvaluationConfig:
+    evaluation = data.get("evaluation", {})
+    return EvaluationConfig(
+        num_episodes=int(evaluation.get("num_episodes", 5)),
+        horizon=int(evaluation.get("horizon", 25)),
+        seed=int(evaluation.get("seed", 0)),
+        tail_threshold=int(evaluation.get("tail_threshold", 8)),
+        boundary_state=(
+            None
+            if evaluation.get("boundary_state") is None
+            else int(evaluation["boundary_state"])
         ),
     )

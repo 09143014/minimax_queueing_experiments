@@ -23,3 +23,9 @@ bvi:
   max_iterations: 1000
   boundary_mode: clip
 
+evaluation:
+  num_episodes: 3
+  horizon: 20
+  seed: 100
+  tail_threshold: 8
+  boundary_state: 10

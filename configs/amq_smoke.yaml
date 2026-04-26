@@ -26,3 +26,9 @@ amq:
   log_interval: 20
   weight_clip: 100.0
 
+evaluation:
+  num_episodes: 3
+  horizon: 20
+  seed: 100
+  tail_threshold: 8
+  boundary_state: 10
