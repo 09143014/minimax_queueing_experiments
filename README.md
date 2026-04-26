@@ -32,6 +32,7 @@ python scripts/run_experiment.py --config configs/amq_smoke.yaml
 python scripts/run_experiment.py --config configs/nnq_smoke.yaml
 python scripts/run_experiment.py --config configs/routing_smoke.yaml
 python scripts/run_experiment.py --config configs/routing_amq_smoke.yaml
+python scripts/run_experiment.py --config configs/routing_amq_debug.yaml
 python scripts/run_service_rate_comparison.py --config configs/service_rate_comparison.yaml
 python -m unittest discover -s tests
 ```

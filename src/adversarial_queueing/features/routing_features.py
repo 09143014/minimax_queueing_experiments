@@ -36,6 +36,32 @@ def routing_features(
             ]
         )
 
+    if feature_set == "action_interaction":
+        attacker = _one_hot(attacker_action, 2)
+        defender = _one_hot(defender_action, 2)
+        aggregate = np.array(
+            [
+                1.0,
+                float(x.sum()),
+                float(np.dot(x, x)),
+                float(x.max() - x.min()) if x.size else 0.0,
+            ],
+            dtype=float,
+        )
+        return np.concatenate(
+            [
+                aggregate,
+                x,
+                attacker,
+                defender,
+                np.outer(attacker, defender).ravel(),
+                aggregate[1:] * defender[1],
+                x * defender[1],
+                aggregate[1:] * attacker[1],
+                x * attacker[1],
+            ]
+        )
+
     raise ValueError(f"unknown routing feature_set: {feature_set}")
 
 
@@ -48,3 +74,11 @@ def routing_feature_dim(num_queues: int, feature_set: str = "basic") -> int:
             feature_set=feature_set,
         ).shape[0]
     )
+
+
+def _one_hot(index: int, size: int) -> np.ndarray:
+    if not 0 <= index < size:
+        raise ValueError(f"index {index} outside one-hot size {size}")
+    out = np.zeros(size, dtype=float)
+    out[index] = 1.0
+    return out
