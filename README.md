@@ -12,6 +12,7 @@ The first runnable baseline implements:
 - a service-rate-control benchmark using uniformized CTMC dynamics;
 - a shared zero-sum matrix-game solver;
 - a bounded value-iteration smoke path;
+- a linear AMQ smoke path for service-rate-control;
 - tests for the minimax solver and service-rate-control dynamics.
 
 Routing, polling, AMQ, and NNQ will be added in focused follow-up changes.
@@ -20,6 +21,7 @@ Routing, polling, AMQ, and NNQ will be added in focused follow-up changes.
 
 ```bash
 python scripts/run_experiment.py --config configs/smoke.yaml
+python scripts/run_experiment.py --config configs/amq_smoke.yaml
 python -m unittest discover -s tests
 ```
 
@@ -36,4 +38,3 @@ pytest
 - Matrix-game payoffs use shape `[num_attacker_actions, num_defender_actions]`.
 - BVI is a bounded-state approximate solver, not hard-coded ground truth.
 - Service-rate-control defaults to three service levels and quadratic congestion cost.
-

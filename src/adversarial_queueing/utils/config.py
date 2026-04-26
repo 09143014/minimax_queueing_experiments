@@ -7,6 +7,7 @@ from typing import Any
 
 import yaml
 
+from adversarial_queueing.algorithms.amq import AMQConfig
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlConfig
 
 
@@ -39,3 +40,20 @@ def build_service_rate_config(data: dict[str, Any]) -> ServiceRateControlConfig:
         boundary_mode=str(bvi.get("boundary_mode", "clip")),
     )
 
+
+def build_amq_config(data: dict[str, Any]) -> AMQConfig:
+    amq = data.get("amq", {})
+    return AMQConfig(
+        feature_set=str(amq.get("feature_set", "basic_quadratic")),
+        total_steps=int(amq.get("total_steps", 100)),
+        eta0=float(amq.get("eta0", 0.01)),
+        learning_rate_schedule=str(amq.get("learning_rate_schedule", "constant")),
+        decay_power=float(amq.get("decay_power", 0.6)),
+        seed=int(amq.get("seed", 0)),
+        log_interval=int(amq.get("log_interval", 10)),
+        weight_clip=(
+            None
+            if amq.get("weight_clip") is None
+            else float(amq["weight_clip"])
+        ),
+    )

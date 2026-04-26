@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 def create_run_dir(base_dir: str | Path, experiment_name: str) -> Path:
@@ -25,3 +25,9 @@ def create_run_dir(base_dir: str | Path, experiment_name: str) -> Path:
 
 def write_json(path: str | Path, data: dict[str, Any]) -> None:
     Path(path).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> None:
+    with Path(path).open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")

@@ -5,18 +5,22 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import run_bounded_value_iteration
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
-from adversarial_queueing.utils.config import build_service_rate_config, load_config
-from adversarial_queueing.utils.output import create_run_dir, write_json
+from adversarial_queueing.utils.config import build_amq_config, build_service_rate_config, load_config
+from adversarial_queueing.utils.output import create_run_dir, write_json, write_jsonl
 
 
 def main() -> int:
@@ -28,45 +32,88 @@ def main() -> int:
     config = load_config(config_path)
     if config["env"]["name"] != "service_rate_control":
         raise ValueError("baseline runner currently supports only service_rate_control")
-    if config["algorithm"]["name"] != "bvi":
-        raise ValueError("baseline runner currently supports only algorithm.name=bvi")
 
     env_config = build_service_rate_config(config)
     env = ServiceRateControlEnv(env_config)
-    bvi_config = config["bvi"]
-    result = run_bounded_value_iteration(
-        env,
-        max_queue_length=int(bvi_config["max_queue_length"]),
-        tolerance=float(bvi_config["tolerance"]),
-        max_iterations=int(bvi_config["max_iterations"]),
-    )
+    algorithm = config["algorithm"]["name"]
 
     run_dir = create_run_dir(
         config["experiment"].get("output_dir", "results"),
         config["experiment"].get("name", "experiment"),
     )
     shutil.copy2(config_path, run_dir / "config.yaml")
-    write_json(
-        run_dir / "summary.json",
-        {
+    command = " ".join([sys.executable, *sys.argv])
+    (run_dir / "command.txt").write_text(command + "\n", encoding="utf-8")
+    (run_dir / "git_commit.txt").write_text(_git_commit() + "\n", encoding="utf-8")
+
+    if algorithm == "bvi":
+        bvi_config = config["bvi"]
+        result = run_bounded_value_iteration(
+            env,
+            max_queue_length=int(bvi_config["max_queue_length"]),
+            tolerance=float(bvi_config["tolerance"]),
+            max_iterations=int(bvi_config["max_iterations"]),
+        )
+        summary = {
             "algorithm": "bvi",
             "benchmark": "service_rate_control",
             "iterations": result.iterations,
             "residual": result.residual,
             "value_at_initial_state": result.values[env_config.initial_state],
             "max_queue_length": int(bvi_config["max_queue_length"]),
-        },
+        }
+        write_json(run_dir / "summary.json", summary)
+        print(f"wrote {run_dir}")
+        print(
+            "summary: "
+            f"iterations={result.iterations} "
+            f"residual={result.residual:.6g} "
+            f"V0={result.values[env_config.initial_state]:.6g}"
+        )
+        return 0
+
+    if algorithm == "amq":
+        amq_config = build_amq_config(config)
+        result = LinearAMQTrainer(env, amq_config).train()
+        write_jsonl(run_dir / "metrics.jsonl", result.metrics)
+        final_td_error = result.metrics[-1]["td_error"] if result.metrics else 0.0
+        summary = {
+            "algorithm": "amq",
+            "benchmark": "service_rate_control",
+            "feature_set": amq_config.feature_set,
+            "total_steps": amq_config.total_steps,
+            "seed": amq_config.seed,
+            "final_state": result.final_state,
+            "final_td_error": final_td_error,
+            "weight_norm": float(np.linalg.norm(result.weights)),
+            "num_logged_metrics": len(result.metrics),
+        }
+        write_json(run_dir / "summary.json", summary)
+        print(f"wrote {run_dir}")
+        print(
+            "summary: "
+            f"steps={amq_config.total_steps} "
+            f"final_td_error={final_td_error:.6g} "
+            f"weight_norm={summary['weight_norm']:.6g}"
+        )
+        return 0
+
+    raise ValueError(f"unsupported algorithm.name: {algorithm}")
+
+
+def _git_commit() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
     )
-    print(f"wrote {run_dir}")
-    print(
-        "summary: "
-        f"iterations={result.iterations} "
-        f"residual={result.residual:.6g} "
-        f"V0={result.values[env_config.initial_state]:.6g}"
-    )
-    return 0
+    if completed.returncode != 0:
+        return "unavailable"
+    return completed.stdout.strip()
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
