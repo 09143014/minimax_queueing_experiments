@@ -10,8 +10,11 @@ from adversarial_queueing.algorithms.bvi import (
 )
 from adversarial_queueing.algorithms.amq import AMQConfig, LinearAMQTrainer
 from adversarial_queueing.envs.routing import RoutingConfig, RoutingEnv
-from adversarial_queueing.evaluation.routing_policy import bvi_routing_policy_inspection
-from adversarial_queueing.evaluation.routing_policy import amq_routing_policy_inspection
+from adversarial_queueing.evaluation.routing_policy import (
+    amq_routing_policy_inspection,
+    bvi_routing_policy_inspection,
+    compare_amq_bvi_routing_policies,
+)
 from adversarial_queueing.evaluation.rollout import (
     EvaluationConfig,
     evaluate_policy,
@@ -63,6 +66,24 @@ class RoutingPolicyInspectionTests(unittest.TestCase):
         self.assertEqual(len(rows), 9)
         self.assertEqual(summary["num_policy_states"], 9)
         self.assertEqual(rows[0]["method"], "amq")
+
+    def test_amq_bvi_policy_comparison_exports_gap_summary(self):
+        env, result = self.make_result()
+        trainer = LinearAMQTrainer(
+            env,
+            AMQConfig(feature_set="basic", total_steps=10, eta0=0.001, seed=7),
+        )
+        trainer.train()
+
+        rows, summary = compare_amq_bvi_routing_policies(env, trainer, result)
+
+        self.assertEqual(len(rows), len(result.values))
+        self.assertIn("p_defend_amq", rows[0])
+        self.assertIn("p_defend_bvi_reference", rows[0])
+        self.assertIn("p_defend_abs_gap_mean", summary)
+        self.assertIn("by_total_queue", summary)
+        self.assertIn("by_imbalance", summary)
+        self.assertEqual(summary["num_compared_states"], len(result.values))
 
     def test_rollout_summarizes_tuple_states_by_load(self):
         env, result = self.make_result()

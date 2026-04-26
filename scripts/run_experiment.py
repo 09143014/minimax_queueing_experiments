@@ -34,6 +34,7 @@ from adversarial_queueing.evaluation.rollout import (
 from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
     bvi_routing_policy_inspection,
+    compare_amq_bvi_routing_policies,
 )
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
 from adversarial_queueing.evaluation.policy_grid import (
@@ -188,8 +189,32 @@ def main() -> int:
                 probability_threshold=policy_grid_config.high_probability_threshold,
             )
             write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
+            bvi_reference = run_bounded_value_iteration(
+                env,
+                max_queue_length=max_queue_length,
+                tolerance=float(bvi_config.get("tolerance", 1e-6)),
+                max_iterations=int(bvi_config.get("max_iterations", 1000)),
+                states=_bvi_states(env_name, env_config, max_queue_length),
+            )
+            comparison_rows, comparison_summary = compare_amq_bvi_routing_policies(
+                env,
+                trainer,
+                bvi_reference,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_comparison.jsonl", comparison_rows)
             policy_summary_key = "policy_inspection"
             policy_summary_value = policy_summary
+            extra_summary = {
+                "policy_comparison": comparison_summary,
+                "bvi_reference": {
+                    "iterations": bvi_reference.iterations,
+                    "residual": bvi_reference.residual,
+                    "max_queue_length": max_queue_length,
+                    "num_states": len(bvi_reference.values),
+                    "role": "bounded_reference_for_evaluation_only",
+                },
+            }
         else:
             raise ValueError(f"AMQ runner does not support env.name: {env_name}")
         final_td_error = result.metrics[-1]["td_error"] if result.metrics else 0.0
@@ -206,6 +231,8 @@ def main() -> int:
             "evaluation": evaluation.summary,
             policy_summary_key: policy_summary_value,
         }
+        if env_name == "routing":
+            summary.update(extra_summary)
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
         print(

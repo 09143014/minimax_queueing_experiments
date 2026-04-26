@@ -138,10 +138,14 @@ class SmokeRunnerTests(unittest.TestCase):
         self.assertTrue((run_dir / "metrics.jsonl").exists())
         self.assertTrue((run_dir / "evaluation.jsonl").exists())
         self.assertTrue((run_dir / "policy_inspection.jsonl").exists())
+        self.assertTrue((run_dir / "policy_comparison.jsonl").exists())
         summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
         self.assertEqual(summary["benchmark"], "routing")
         self.assertEqual(summary["feature_set"], "basic")
         self.assertIn("policy_inspection", summary)
+        self.assertIn("policy_comparison", summary)
+        self.assertIn("bvi_reference", summary)
+        self.assertEqual(summary["bvi_reference"]["role"], "bounded_reference_for_evaluation_only")
 
     def test_nnq_smoke_config_runs(self):
         root = Path(__file__).resolve().parents[1]
