@@ -18,19 +18,22 @@ if str(SRC) not in sys.path:
 
 from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import run_bounded_value_iteration
+from adversarial_queueing.algorithms.nnq import NNQTrainer
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
 from adversarial_queueing.evaluation.rollout import (
     evaluate_policy,
     make_amq_defender_policy,
     make_bvi_defender_policy,
+    make_nnq_defender_policy,
     random_attacker_policy,
 )
-from adversarial_queueing.evaluation.policy_grid import amq_policy_grid, bvi_policy_grid
+from adversarial_queueing.evaluation.policy_grid import amq_policy_grid, bvi_policy_grid, nnq_policy_grid
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
 from adversarial_queueing.utils.config import (
     build_amq_config,
     build_bvi_sensitivity_config,
     build_evaluation_config,
+    build_nnq_config,
     build_policy_grid_config,
     build_service_rate_config,
     load_config,
@@ -137,6 +140,46 @@ def main() -> int:
             f"steps={amq_config.total_steps} "
             f"final_td_error={final_td_error:.6g} "
             f"weight_norm={summary['weight_norm']:.6g} "
+            f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g}"
+        )
+        return 0
+
+    if algorithm == "nnq":
+        nnq_config = build_nnq_config(config)
+        trainer = NNQTrainer(env, nnq_config)
+        result = trainer.train()
+        trainer.network = result.network.copy()
+        trainer.target_network = result.network.copy()
+        write_jsonl(run_dir / "metrics.jsonl", result.metrics)
+        evaluation = evaluate_policy(
+            env,
+            defender_policy=make_nnq_defender_policy(trainer),
+            attacker_policy=random_attacker_policy,
+            config=evaluation_config,
+        )
+        write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
+        policy_rows, policy_summary = nnq_policy_grid(env, trainer, policy_grid_config)
+        write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+        final_loss = result.metrics[-1]["loss"] if result.metrics else 0.0
+        summary = {
+            "algorithm": "nnq",
+            "benchmark": "service_rate_control",
+            "hidden_size": nnq_config.hidden_size,
+            "total_steps": nnq_config.total_steps,
+            "seed": nnq_config.seed,
+            "final_state": result.final_state,
+            "final_loss": final_loss,
+            "num_logged_metrics": len(result.metrics),
+            "evaluation": evaluation.summary,
+            "policy_grid": policy_summary,
+            "implementation": "numpy_mlp_smoke",
+        }
+        write_json(run_dir / "summary.json", summary)
+        print(f"wrote {run_dir}")
+        print(
+            "summary: "
+            f"steps={nnq_config.total_steps} "
+            f"final_loss={final_loss:.6g} "
             f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g}"
         )
         return 0

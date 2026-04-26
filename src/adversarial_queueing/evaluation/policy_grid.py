@@ -9,6 +9,7 @@ import numpy as np
 from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import BVIResult
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
+from adversarial_queueing.algorithms.nnq import NNQTrainer
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
 
 
@@ -27,6 +28,18 @@ def amq_policy_grid(
     for state in range(config.max_state + 1):
         game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
         rows.append(_policy_row("amq", state, game["defender_strategy"]))
+    return rows, _threshold_summary(rows, config)
+
+
+def nnq_policy_grid(
+    env: ServiceRateControlEnv,
+    trainer: NNQTrainer,
+    config: PolicyGridConfig,
+) -> tuple[list[dict[str, float | int | str]], dict[str, float | int | None]]:
+    rows = []
+    for state in range(config.max_state + 1):
+        game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        rows.append(_policy_row("nnq", state, game["defender_strategy"]))
     return rows, _threshold_summary(rows, config)
 
 
@@ -95,4 +108,3 @@ def _threshold_summary(
         "first_state_p_high_at_least_threshold": high_threshold_state,
         "first_state_p_medium_at_least_threshold": medium_threshold_state,
     }
-

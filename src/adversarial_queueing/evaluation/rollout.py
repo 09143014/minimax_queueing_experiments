@@ -10,6 +10,7 @@ import numpy as np
 from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import BVIResult
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
+from adversarial_queueing.algorithms.nnq import NNQTrainer
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
 
 AttackerPolicy = Callable[[int, np.random.Generator, ServiceRateControlEnv], int]
@@ -100,6 +101,15 @@ def make_amq_defender_policy(trainer: LinearAMQTrainer) -> DefenderPolicy:
     return policy
 
 
+def make_nnq_defender_policy(trainer: NNQTrainer) -> DefenderPolicy:
+    def policy(state: int, rng: np.random.Generator, env: ServiceRateControlEnv) -> int:
+        game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        defender_actions = tuple(env.defender_actions(state))
+        return int(rng.choice(defender_actions, p=game["defender_strategy"]))
+
+    return policy
+
+
 def make_bvi_defender_policy(result: BVIResult) -> DefenderPolicy:
     max_state = max(result.values)
 
@@ -139,4 +149,3 @@ def _summarize_rows(rows: list[dict[str, float | int]]) -> dict[str, float]:
         "tail_fraction_mean": float(tail_fractions.mean()),
         "boundary_hit_fraction_mean": float(boundary_fractions.mean()),
     }
-

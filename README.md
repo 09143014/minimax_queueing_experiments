@@ -13,6 +13,7 @@ The first runnable baseline implements:
 - a shared zero-sum matrix-game solver;
 - a bounded value-iteration smoke path;
 - a linear AMQ smoke path for service-rate-control;
+- a NumPy MLP NNQ smoke path for service-rate-control;
 - shared rollout evaluation for BVI and AMQ smoke runs;
 - policy-grid export for service-rate threshold inspection;
 - BVI truncation sensitivity checks for service-rate-control;
@@ -25,6 +26,7 @@ Routing, polling, AMQ, and NNQ will be added in focused follow-up changes.
 ```bash
 python scripts/run_experiment.py --config configs/smoke.yaml
 python scripts/run_experiment.py --config configs/amq_smoke.yaml
+python scripts/run_experiment.py --config configs/nnq_smoke.yaml
 python -m unittest discover -s tests
 ```
 

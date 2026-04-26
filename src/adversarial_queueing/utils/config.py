@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from adversarial_queueing.algorithms.amq import AMQConfig
+from adversarial_queueing.algorithms.nnq import NNQConfig
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlConfig
 from adversarial_queueing.evaluation.bvi_sensitivity import BVISensitivityConfig
 from adversarial_queueing.evaluation.policy_grid import PolicyGridConfig
@@ -59,6 +60,22 @@ def build_amq_config(data: dict[str, Any]) -> AMQConfig:
             if amq.get("weight_clip") is None
             else float(amq["weight_clip"])
         ),
+    )
+
+
+def build_nnq_config(data: dict[str, Any]) -> NNQConfig:
+    nnq = data.get("nnq", {})
+    return NNQConfig(
+        hidden_size=int(nnq.get("hidden_size", 32)),
+        learning_rate=float(nnq.get("learning_rate", 0.001)),
+        total_steps=int(nnq.get("total_steps", 200)),
+        batch_size=int(nnq.get("batch_size", 16)),
+        replay_capacity=int(nnq.get("replay_capacity", 1000)),
+        target_update_interval=int(nnq.get("target_update_interval", 50)),
+        epsilon=float(nnq.get("epsilon", 0.2)),
+        seed=int(nnq.get("seed", 0)),
+        log_interval=int(nnq.get("log_interval", 20)),
+        state_scale=float(nnq.get("state_scale", 10.0)),
     )
 
 
