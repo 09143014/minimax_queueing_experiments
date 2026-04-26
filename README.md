@@ -14,12 +14,13 @@ The first runnable baseline implements:
 - a bounded value-iteration smoke path;
 - a linear AMQ smoke path for service-rate-control;
 - a NumPy MLP NNQ smoke path for service-rate-control;
+- an initial parallel-queue routing benchmark environment and feature map;
 - shared rollout evaluation for BVI and AMQ smoke runs;
 - policy-grid export for service-rate threshold inspection;
 - BVI truncation sensitivity checks for service-rate-control;
 - tests for the minimax solver and service-rate-control dynamics.
 
-Routing, polling, AMQ, and NNQ will be added in focused follow-up changes.
+Polling and broader multi-benchmark experiment runners will be added in focused follow-up changes.
 
 ## Quick Start
 

@@ -9,6 +9,7 @@ import yaml
 
 from adversarial_queueing.algorithms.amq import AMQConfig
 from adversarial_queueing.algorithms.nnq import NNQConfig
+from adversarial_queueing.envs.routing import RoutingConfig
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlConfig
 from adversarial_queueing.evaluation.bvi_sensitivity import BVISensitivityConfig
 from adversarial_queueing.evaluation.policy_grid import PolicyGridConfig
@@ -40,6 +41,31 @@ def build_service_rate_config(data: dict[str, Any]) -> ServiceRateControlConfig:
             else float(env["uniformization_rate"])
         ),
         robust_defender_actions=tuple(int(x) for x in env.get("robust_defender_actions", [2])),
+        bvi_max_queue_length=int(bvi.get("max_queue_length", 20)),
+        boundary_mode=str(bvi.get("boundary_mode", "clip")),
+    )
+
+
+def build_routing_config(data: dict[str, Any]) -> RoutingConfig:
+    env = data["env"]
+    bvi = data.get("bvi", {})
+    return RoutingConfig(
+        lambda_arrival=float(env["lambda_arrival"]),
+        mu_rates=tuple(float(x) for x in env["mu_rates"]),
+        gamma=float(env.get("gamma", 0.95)),
+        attack_cost=float(env.get("attack_cost", 0.5)),
+        defend_cost=float(env.get("defend_cost", 0.2)),
+        congestion_cost=str(env.get("congestion_cost", "sum")),
+        initial_state=(
+            None
+            if env.get("initial_state") is None
+            else tuple(int(x) for x in env["initial_state"])
+        ),
+        uniformization_rate=(
+            None
+            if env.get("uniformization_rate") is None
+            else float(env["uniformization_rate"])
+        ),
         bvi_max_queue_length=int(bvi.get("max_queue_length", 20)),
         boundary_mode=str(bvi.get("boundary_mode", "clip")),
     )

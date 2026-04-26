@@ -17,8 +17,12 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from adversarial_queueing.algorithms.amq import LinearAMQTrainer
-from adversarial_queueing.algorithms.bvi import run_bounded_value_iteration
+from adversarial_queueing.algorithms.bvi import (
+    bounded_queue_states,
+    run_bounded_value_iteration,
+)
 from adversarial_queueing.algorithms.nnq import NNQTrainer
+from adversarial_queueing.envs.routing import RoutingEnv
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
 from adversarial_queueing.evaluation.rollout import (
     evaluate_policy,
@@ -27,14 +31,20 @@ from adversarial_queueing.evaluation.rollout import (
     make_nnq_defender_policy,
     random_attacker_policy,
 )
-from adversarial_queueing.evaluation.policy_grid import amq_policy_grid, bvi_policy_grid, nnq_policy_grid
+from adversarial_queueing.evaluation.routing_policy import bvi_routing_policy_inspection
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
+from adversarial_queueing.evaluation.policy_grid import (
+    amq_policy_grid,
+    bvi_policy_grid,
+    nnq_policy_grid,
+)
 from adversarial_queueing.utils.config import (
     build_amq_config,
     build_bvi_sensitivity_config,
     build_evaluation_config,
     build_nnq_config,
     build_policy_grid_config,
+    build_routing_config,
     build_service_rate_config,
     load_config,
 )
@@ -48,11 +58,16 @@ def main() -> int:
 
     config_path = Path(args.config)
     config = load_config(config_path)
-    if config["env"]["name"] != "service_rate_control":
-        raise ValueError("baseline runner currently supports only service_rate_control")
+    env_name = config["env"]["name"]
+    if env_name == "service_rate_control":
+        env_config = build_service_rate_config(config)
+        env = ServiceRateControlEnv(env_config)
+    elif env_name == "routing":
+        env_config = build_routing_config(config)
+        env = RoutingEnv(env_config)
+    else:
+        raise ValueError(f"unsupported env.name: {env_name}")
 
-    env_config = build_service_rate_config(config)
-    env = ServiceRateControlEnv(env_config)
     algorithm = config["algorithm"]["name"]
     evaluation_config = build_evaluation_config(config)
     policy_grid_config = build_policy_grid_config(config)
@@ -68,20 +83,53 @@ def main() -> int:
 
     if algorithm == "bvi":
         bvi_config = config["bvi"]
+        max_queue_length = int(bvi_config["max_queue_length"])
+        bvi_states = _bvi_states(env_name, env_config, max_queue_length)
         result = run_bounded_value_iteration(
             env,
-            max_queue_length=int(bvi_config["max_queue_length"]),
+            max_queue_length=max_queue_length,
             tolerance=float(bvi_config["tolerance"]),
             max_iterations=int(bvi_config["max_iterations"]),
+            states=bvi_states,
         )
         summary = {
             "algorithm": "bvi",
-            "benchmark": "service_rate_control",
+            "benchmark": env_name,
             "iterations": result.iterations,
             "residual": result.residual,
-            "value_at_initial_state": result.values[env_config.initial_state],
-            "max_queue_length": int(bvi_config["max_queue_length"]),
+            "value_at_initial_state": result.values[_initial_state(env_name, env_config)],
+            "max_queue_length": max_queue_length,
+            "num_states": len(result.values),
         }
+        if env_name == "routing":
+            evaluation = evaluate_policy(
+                env,
+                defender_policy=make_bvi_defender_policy(result),
+                attacker_policy=random_attacker_policy,
+                config=evaluation_config,
+            )
+            write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
+            policy_rows, policy_summary = bvi_routing_policy_inspection(
+                env,
+                result,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
+            summary["evaluation"] = evaluation.summary
+            summary["policy_inspection"] = policy_summary
+            write_json(run_dir / "summary.json", summary)
+            print(f"wrote {run_dir}")
+            print(
+                "summary: "
+                f"states={len(result.values)} "
+                f"iterations={result.iterations} "
+                f"residual={result.residual:.6g} "
+                f"V0={summary['value_at_initial_state']:.6g} "
+                f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g} "
+                f"defend_states={policy_summary['num_states_p_defend_at_least_threshold']}"
+            )
+            return 0
+
         evaluation = evaluate_policy(
             env,
             defender_policy=make_bvi_defender_policy(result),
@@ -105,6 +153,8 @@ def main() -> int:
         return 0
 
     if algorithm == "amq":
+        if env_name != "service_rate_control":
+            raise ValueError("AMQ runner currently supports only service_rate_control")
         amq_config = build_amq_config(config)
         result = LinearAMQTrainer(env, amq_config).train()
         write_jsonl(run_dir / "metrics.jsonl", result.metrics)
@@ -145,6 +195,8 @@ def main() -> int:
         return 0
 
     if algorithm == "nnq":
+        if env_name != "service_rate_control":
+            raise ValueError("NNQ runner currently supports only service_rate_control")
         nnq_config = build_nnq_config(config)
         trainer = NNQTrainer(env, nnq_config)
         result = trainer.train()
@@ -185,6 +237,8 @@ def main() -> int:
         return 0
 
     if algorithm == "bvi_sensitivity":
+        if env_name != "service_rate_control":
+            raise ValueError("BVI sensitivity currently supports only service_rate_control")
         sensitivity_config = build_bvi_sensitivity_config(config)
         rows, sensitivity_summary = run_bvi_sensitivity(
             env_config,
@@ -209,6 +263,25 @@ def main() -> int:
         return 0
 
     raise ValueError(f"unsupported algorithm.name: {algorithm}")
+
+
+def _bvi_states(env_name: str, env_config, max_queue_length: int):
+    if env_name == "service_rate_control":
+        return bounded_queue_states(num_queues=1, max_queue_length=max_queue_length)
+    if env_name == "routing":
+        return bounded_queue_states(
+            num_queues=env_config.num_queues,
+            max_queue_length=max_queue_length,
+        )
+    raise ValueError(f"unsupported env.name for BVI: {env_name}")
+
+
+def _initial_state(env_name: str, env_config):
+    if env_name == "service_rate_control":
+        return env_config.initial_state
+    if env_name == "routing":
+        return env_config.initial_state_value
+    raise ValueError(f"unsupported env.name for initial state: {env_name}")
 
 
 def _git_commit() -> str:

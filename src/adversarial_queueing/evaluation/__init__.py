@@ -13,6 +13,7 @@ from adversarial_queueing.evaluation.rollout import (
     make_nnq_defender_policy,
     random_attacker_policy,
 )
+from adversarial_queueing.evaluation.routing_policy import bvi_routing_policy_inspection
 from adversarial_queueing.evaluation.policy_grid import (
     PolicyGridConfig,
     amq_policy_grid,
@@ -27,6 +28,7 @@ __all__ = [
     "RolloutResult",
     "amq_policy_grid",
     "bvi_policy_grid",
+    "bvi_routing_policy_inspection",
     "nnq_policy_grid",
     "evaluate_policy",
     "make_amq_defender_policy",

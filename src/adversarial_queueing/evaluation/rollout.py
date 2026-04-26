@@ -1,9 +1,9 @@
-"""Rollout evaluation for service-rate-control policies."""
+"""Rollout evaluation for benchmark policies."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable, Hashable
 
 import numpy as np
 
@@ -11,10 +11,10 @@ from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import BVIResult
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
 from adversarial_queueing.algorithms.nnq import NNQTrainer
-from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
+from adversarial_queueing.envs.base import BaseAdversarialQueueEnv
 
-AttackerPolicy = Callable[[int, np.random.Generator, ServiceRateControlEnv], int]
-DefenderPolicy = Callable[[int, np.random.Generator, ServiceRateControlEnv], int]
+AttackerPolicy = Callable[[Hashable, np.random.Generator, BaseAdversarialQueueEnv], int]
+DefenderPolicy = Callable[[Hashable, np.random.Generator, BaseAdversarialQueueEnv], int]
 
 
 @dataclass(frozen=True)
@@ -28,12 +28,12 @@ class EvaluationConfig:
 
 @dataclass(frozen=True)
 class RolloutResult:
-    rows: list[dict[str, float | int]]
+    rows: list[dict[str, Any]]
     summary: dict[str, float | int]
 
 
 def evaluate_policy(
-    env: ServiceRateControlEnv,
+    env: BaseAdversarialQueueEnv,
     defender_policy: DefenderPolicy,
     attacker_policy: AttackerPolicy,
     config: EvaluationConfig,
@@ -41,10 +41,10 @@ def evaluate_policy(
     """Evaluate policies using the same environment step convention as training."""
 
     rng = np.random.default_rng(config.seed)
-    rows: list[dict[str, float | int]] = []
+    rows: list[dict[str, Any]] = []
 
     for episode in range(config.num_episodes):
-        state = int(env.reset(seed=config.seed + episode))
+        state = env.reset(seed=config.seed + episode)
         discounted_cost = 0.0
         total_cost = 0.0
         tail_count = 0
@@ -56,10 +56,11 @@ def evaluate_policy(
             next_state, cost, _info = env.step(attacker_action, defender_action)
             total_cost += float(cost)
             discounted_cost += (env.discount**step) * float(cost)
-            tail_count += int(next_state >= config.tail_threshold)
+            next_load = _state_load(next_state)
+            tail_count += int(next_load >= config.tail_threshold)
             if config.boundary_state is not None:
-                boundary_hits += int(next_state >= config.boundary_state)
-            state = int(next_state)
+                boundary_hits += int(next_load >= config.boundary_state)
+            state = next_state
 
         rows.append(
             {
@@ -69,6 +70,7 @@ def evaluate_policy(
                 "average_cost": total_cost / config.horizon,
                 "discounted_cost": discounted_cost,
                 "final_state": state,
+                "final_load": _state_load(state),
                 "tail_fraction": tail_count / config.horizon,
                 "boundary_hit_fraction": boundary_hits / config.horizon,
             }
@@ -87,13 +89,15 @@ def evaluate_policy(
 
 
 def random_attacker_policy(
-    state: int, rng: np.random.Generator, env: ServiceRateControlEnv
+    state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
 ) -> int:
     return int(rng.choice(env.attacker_actions(state)))
 
 
 def make_amq_defender_policy(trainer: LinearAMQTrainer) -> DefenderPolicy:
-    def policy(state: int, rng: np.random.Generator, env: ServiceRateControlEnv) -> int:
+    def policy(
+        state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+    ) -> int:
         game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
         defender_actions = tuple(env.defender_actions(state))
         return int(rng.choice(defender_actions, p=game["defender_strategy"]))
@@ -102,7 +106,9 @@ def make_amq_defender_policy(trainer: LinearAMQTrainer) -> DefenderPolicy:
 
 
 def make_nnq_defender_policy(trainer: NNQTrainer) -> DefenderPolicy:
-    def policy(state: int, rng: np.random.Generator, env: ServiceRateControlEnv) -> int:
+    def policy(
+        state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+    ) -> int:
         game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
         defender_actions = tuple(env.defender_actions(state))
         return int(rng.choice(defender_actions, p=game["defender_strategy"]))
@@ -111,10 +117,12 @@ def make_nnq_defender_policy(trainer: NNQTrainer) -> DefenderPolicy:
 
 
 def make_bvi_defender_policy(result: BVIResult) -> DefenderPolicy:
-    max_state = max(result.values)
+    max_queue_length = _bvi_bound(result)
 
-    def policy(state: int, rng: np.random.Generator, env: ServiceRateControlEnv) -> int:
-        clipped_state = min(int(state), max_state)
+    def policy(
+        state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+    ) -> int:
+        clipped_state = _bounded_state(state, max_queue_length)
         attacker_actions = tuple(env.attacker_actions(clipped_state))
         defender_actions = tuple(env.defender_actions(clipped_state))
         payoff = np.zeros((len(attacker_actions), len(defender_actions)), dtype=float)
@@ -124,7 +132,9 @@ def make_bvi_defender_policy(result: BVIResult) -> DefenderPolicy:
                 for next_state, prob in env.transition_probabilities(
                     clipped_state, attacker_action, defender_action
                 ).items():
-                    expected_next += prob * result.values[min(int(next_state), max_state)]
+                    expected_next += prob * result.values[
+                        _bounded_state(next_state, max_queue_length)
+                    ]
                 payoff[ai, bi] = (
                     env.cost(clipped_state, attacker_action, defender_action)
                     + env.discount * expected_next
@@ -135,17 +145,42 @@ def make_bvi_defender_policy(result: BVIResult) -> DefenderPolicy:
     return policy
 
 
-def _summarize_rows(rows: list[dict[str, float | int]]) -> dict[str, float]:
+def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, float]:
     average_costs = np.array([row["average_cost"] for row in rows], dtype=float)
     discounted_costs = np.array([row["discounted_cost"] for row in rows], dtype=float)
-    final_states = np.array([row["final_state"] for row in rows], dtype=float)
+    final_loads = np.array([row["final_load"] for row in rows], dtype=float)
     tail_fractions = np.array([row["tail_fraction"] for row in rows], dtype=float)
     boundary_fractions = np.array([row["boundary_hit_fraction"] for row in rows], dtype=float)
     return {
         "average_cost_mean": float(average_costs.mean()),
         "average_cost_std": float(average_costs.std(ddof=0)),
         "discounted_cost_mean": float(discounted_costs.mean()),
-        "final_state_mean": float(final_states.mean()),
+        "final_state_mean": float(final_loads.mean()),
+        "final_load_mean": float(final_loads.mean()),
         "tail_fraction_mean": float(tail_fractions.mean()),
         "boundary_hit_fraction_mean": float(boundary_fractions.mean()),
     }
+
+
+def _state_load(state: Hashable) -> int:
+    if isinstance(state, tuple):
+        return int(sum(int(value) for value in state))
+    return int(state)
+
+
+def _bvi_bound(result: BVIResult) -> int:
+    if result.max_queue_length is not None:
+        return result.max_queue_length
+    max_value = 0
+    for state in result.values:
+        if isinstance(state, tuple):
+            max_value = max(max_value, *(int(value) for value in state))
+        else:
+            max_value = max(max_value, int(state))
+    return max_value
+
+
+def _bounded_state(state: Hashable, max_queue_length: int) -> Hashable:
+    if isinstance(state, tuple):
+        return tuple(min(int(value), max_queue_length) for value in state)
+    return min(int(state), max_queue_length)
