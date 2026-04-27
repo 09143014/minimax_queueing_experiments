@@ -80,6 +80,55 @@ def compare_amq_bvi_routing_policies(
     return rows, _comparison_summary(rows, probability_threshold)
 
 
+def routing_amq_q_diagnostic(
+    env: RoutingEnv,
+    trainer: LinearAMQTrainer,
+    bvi_result: BVIResult,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compare AMQ Q values with AMQ Bellman targets and bounded BVI reference Q."""
+
+    rows: list[dict[str, Any]] = []
+    for state in sorted(bvi_result.values, key=_state_sort_key):
+        if not isinstance(state, tuple):
+            raise ValueError("routing Q diagnostic requires tuple states")
+        for attacker_action in env.attacker_actions(state):
+            for defender_action in env.defender_actions(state):
+                q_amq = trainer.q_value(state, attacker_action, defender_action)
+                amq_target = _amq_bellman_target(
+                    env,
+                    trainer,
+                    state,
+                    attacker_action,
+                    defender_action,
+                )
+                q_bvi_reference = _bvi_q_value(
+                    env,
+                    bvi_result,
+                    state,
+                    attacker_action,
+                    defender_action,
+                )
+                amq_residual = amq_target - q_amq
+                reference_gap = q_amq - q_bvi_reference
+                rows.append(
+                    {
+                        "state": list(state),
+                        "total_queue": sum(state),
+                        "imbalance": max(state) - min(state),
+                        "attacker_action": int(attacker_action),
+                        "defender_action": int(defender_action),
+                        "q_amq": float(q_amq),
+                        "amq_bellman_target": float(amq_target),
+                        "amq_bellman_residual": float(amq_residual),
+                        "amq_bellman_abs_residual": abs(float(amq_residual)),
+                        "q_bvi_reference": float(q_bvi_reference),
+                        "q_reference_signed_gap": float(reference_gap),
+                        "q_reference_abs_gap": abs(float(reference_gap)),
+                    }
+                )
+    return rows, _q_diagnostic_summary(rows)
+
+
 def _bvi_game_at_state(env: RoutingEnv, result: BVIResult, state: State) -> dict[str, Any]:
     max_queue_length = result.max_queue_length
     if max_queue_length is None:
@@ -102,6 +151,40 @@ def _bvi_game_at_state(env: RoutingEnv, result: BVIResult, state: State) -> dict
                 + env.discount * expected_next
             )
     return solve_zero_sum_matrix_game(payoff)
+
+
+def _bvi_q_value(
+    env: RoutingEnv,
+    result: BVIResult,
+    state: State,
+    attacker_action: int,
+    defender_action: int,
+) -> float:
+    max_queue_length = result.max_queue_length
+    if max_queue_length is None:
+        max_queue_length = max(max(value) for value in result.values if isinstance(value, tuple))
+
+    expected_next = 0.0
+    for next_state, prob in env.transition_probabilities(
+        state, attacker_action, defender_action
+    ).items():
+        expected_next += prob * result.values[_bounded_state(next_state, max_queue_length)]
+    return float(env.cost(state, attacker_action, defender_action) + env.discount * expected_next)
+
+
+def _amq_bellman_target(
+    env: RoutingEnv,
+    trainer: LinearAMQTrainer,
+    state: State,
+    attacker_action: int,
+    defender_action: int,
+) -> float:
+    expected_next = 0.0
+    for next_state, prob in env.transition_probabilities(
+        state, attacker_action, defender_action
+    ).items():
+        expected_next += prob * trainer.value(next_state)
+    return float(env.cost(state, attacker_action, defender_action) + env.discount * expected_next)
 
 
 def _policy_row(
@@ -127,6 +210,24 @@ def _policy_row(
         "p_no_defend": float(defender_strategy[0]),
         "p_defend": float(defender_strategy[1]),
         "value": float(game["value"]),
+    }
+
+
+def _q_diagnostic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    residuals = np.array([row["amq_bellman_abs_residual"] for row in rows], dtype=float)
+    reference_gaps = np.array([row["q_reference_abs_gap"] for row in rows], dtype=float)
+    amq_q_abs = np.array([abs(row["q_amq"]) for row in rows], dtype=float)
+    bvi_q_abs = np.array([abs(row["q_bvi_reference"]) for row in rows], dtype=float)
+    return {
+        "num_q_entries": len(rows),
+        "amq_bellman_abs_residual_mean": float(residuals.mean()),
+        "amq_bellman_abs_residual_max": float(residuals.max()),
+        "q_reference_abs_gap_mean": float(reference_gaps.mean()),
+        "q_reference_abs_gap_max": float(reference_gaps.max()),
+        "mean_abs_amq_q": float(amq_q_abs.mean()),
+        "mean_abs_bvi_reference_q": float(bvi_q_abs.mean()),
+        "by_total_queue": _group_q_diagnostic_summary(rows, "total_queue"),
+        "by_imbalance": _group_q_diagnostic_summary(rows, "imbalance"),
     }
 
 
@@ -191,6 +292,30 @@ def _group_gap_summary(rows: list[dict[str, Any]], key: str) -> list[dict[str, A
                 "num_states": len(group_rows),
                 "p_defend_abs_gap_mean": float(abs_gaps.mean()),
                 "p_defend_signed_gap_mean": float(signed_gaps.mean()),
+            }
+        )
+    return summaries
+
+
+def _group_q_diagnostic_summary(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    groups = sorted({int(row[key]) for row in rows})
+    summaries = []
+    for group in groups:
+        group_rows = [row for row in rows if int(row[key]) == group]
+        residuals = np.array(
+            [row["amq_bellman_abs_residual"] for row in group_rows],
+            dtype=float,
+        )
+        reference_gaps = np.array(
+            [row["q_reference_abs_gap"] for row in group_rows],
+            dtype=float,
+        )
+        summaries.append(
+            {
+                key: group,
+                "num_q_entries": len(group_rows),
+                "amq_bellman_abs_residual_mean": float(residuals.mean()),
+                "q_reference_abs_gap_mean": float(reference_gaps.mean()),
             }
         )
     return summaries

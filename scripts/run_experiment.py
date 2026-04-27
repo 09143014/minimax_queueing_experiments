@@ -35,6 +35,7 @@ from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
     bvi_routing_policy_inspection,
     compare_amq_bvi_routing_policies,
+    routing_amq_q_diagnostic,
 )
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
 from adversarial_queueing.evaluation.policy_grid import (
@@ -203,10 +204,13 @@ def main() -> int:
                 probability_threshold=policy_grid_config.high_probability_threshold,
             )
             write_jsonl(run_dir / "policy_comparison.jsonl", comparison_rows)
+            q_rows, q_summary = routing_amq_q_diagnostic(env, trainer, bvi_reference)
+            write_jsonl(run_dir / "q_diagnostic.jsonl", q_rows)
             policy_summary_key = "policy_inspection"
             policy_summary_value = policy_summary
             extra_summary = {
                 "policy_comparison": comparison_summary,
+                "q_diagnostic": q_summary,
                 "bvi_reference": {
                     "iterations": bvi_reference.iterations,
                     "residual": bvi_reference.residual,

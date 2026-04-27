@@ -33,6 +33,7 @@ The first debug run with `action_interaction` features is non-crashing and expor
 - AMQ chooses defend with probability `1.0` on all inspected states.
 - BVI on the small routing grid chooses defense selectively, with some low-load states not defended.
 - The policy comparison diagnostic reports the AMQ-vs-bounded-BVI defend-probability gap by state, total queue length, and imbalance.
+- The Q diagnostic reports AMQ Bellman residuals and AMQ-vs-bounded-BVI-reference Q gaps for every inspected `(state, attacker_action, defender_action)` entry.
 - This indicates the routing AMQ path is ready for debugging, but the current feature/training configuration should not be interpreted as a satisfactory learned routing policy.
 
 ## Follow-Up

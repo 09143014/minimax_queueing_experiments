@@ -14,6 +14,7 @@ from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
     bvi_routing_policy_inspection,
     compare_amq_bvi_routing_policies,
+    routing_amq_q_diagnostic,
 )
 from adversarial_queueing.evaluation.rollout import (
     EvaluationConfig,
@@ -84,6 +85,23 @@ class RoutingPolicyInspectionTests(unittest.TestCase):
         self.assertIn("by_total_queue", summary)
         self.assertIn("by_imbalance", summary)
         self.assertEqual(summary["num_compared_states"], len(result.values))
+
+    def test_amq_q_diagnostic_exports_bellman_and_reference_gaps(self):
+        env, result = self.make_result()
+        trainer = LinearAMQTrainer(
+            env,
+            AMQConfig(feature_set="basic", total_steps=10, eta0=0.001, seed=7),
+        )
+        trainer.train()
+
+        rows, summary = routing_amq_q_diagnostic(env, trainer, result)
+
+        self.assertEqual(len(rows), len(result.values) * 4)
+        self.assertIn("amq_bellman_residual", rows[0])
+        self.assertIn("q_bvi_reference", rows[0])
+        self.assertIn("amq_bellman_abs_residual_mean", summary)
+        self.assertIn("q_reference_abs_gap_mean", summary)
+        self.assertIn("by_total_queue", summary)
 
     def test_rollout_summarizes_tuple_states_by_load(self):
         env, result = self.make_result()
