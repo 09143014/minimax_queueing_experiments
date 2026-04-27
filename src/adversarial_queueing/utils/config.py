@@ -109,6 +109,14 @@ def build_nnq_config(data: dict[str, Any]) -> NNQConfig:
         log_interval=int(nnq.get("log_interval", 20)),
         state_scale=float(nnq.get("state_scale", 10.0)),
         state_feature_set=str(nnq.get("state_feature_set", "env")),
+        forced_defender_action_probability=float(
+            nnq.get("forced_defender_action_probability", 0.0)
+        ),
+        forced_defender_action=(
+            None
+            if nnq.get("forced_defender_action") is None
+            else int(nnq["forced_defender_action"])
+        ),
         exploring_starts_probability=float(nnq.get("exploring_starts_probability", 0.0)),
         exploring_starts_max_queue_length=(
             None

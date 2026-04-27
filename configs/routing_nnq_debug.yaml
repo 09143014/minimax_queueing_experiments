@@ -28,6 +28,8 @@ nnq:
   log_interval: 500
   state_scale: 3.0
   state_feature_set: routing_augmented
+  forced_defender_action_probability: 0.1
+  forced_defender_action: 1
   exploring_starts_probability: 0.1
   exploring_starts_max_queue_length: 3
 

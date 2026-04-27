@@ -117,3 +117,47 @@ Rejected variants:
   worsened to `0.6872` with `39` over-defense states.
 - `routing_augmented`, hidden size `64`, no balanced batches: policy gap
   worsened to `0.3946` with `15` over-defense states.
+
+## Defender-Action Exploration
+
+The next fix adds `forced_defender_action_probability` to the NNQ behavior
+policy. This is training-only exploration: with a small probability the sampled
+defender action is overwritten by a configured defender action. For routing
+debug this action is `1` (defend). Evaluation still uses the learned minimax
+NNQ policy, and BVI remains evaluation-only.
+
+Command:
+
+```bash
+rtk python scripts/run_experiment.py --config configs/routing_nnq_debug.yaml
+```
+
+Artifact:
+
+```text
+results/routing_nnq_debug/20260427T122157Z
+```
+
+Summary for `forced_defender_action_probability: 0.1`:
+
+- rollout average cost mean: `0.1861`
+- bounded policy comparison mean absolute defend-probability gap: `0.1299`
+- NNQ over-defense states: `1`
+- NNQ under-defense states: `6`
+- NNQ Bellman residual mean: `0.1606`
+- NNQ-vs-bounded-BVI-reference Q gap mean: `2.0390`
+- mean absolute NNQ Q: `5.9869`
+- mean action Q spread: `0.3038`
+- inspected bounded routing states: `64`
+
+This is the best routing NNQ debug configuration so far by bounded policy gap:
+it reduces under-defense relative to the augmented-feature debug run while
+keeping over-defense limited to one inspected state. It is still not final,
+because the one over-defense state is the empty state `[0, 0, 0]`.
+
+Rejected exploration probabilities:
+
+- `0.05`: policy gap worsened to `0.3668` with `17` over-defense states and
+  `5` under-defense states.
+- `0.15`: policy gap worsened to `0.1419` with `1` over-defense state and `8`
+  under-defense states.

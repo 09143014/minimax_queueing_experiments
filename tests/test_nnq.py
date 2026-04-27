@@ -63,6 +63,23 @@ class NNQTests(unittest.TestCase):
         self.assertEqual(trainer.network.input_size, 19)
         self.assertEqual(trainer.q_matrix((0, 1, 2)).shape, (2, 2))
 
+    def test_forced_defender_action_overrides_behavior_policy(self):
+        trainer = NNQTrainer(
+            self.make_env(),
+            NNQConfig(
+                total_steps=1,
+                hidden_size=8,
+                epsilon=0.0,
+                forced_defender_action_probability=1.0,
+                forced_defender_action=2,
+                seed=123,
+            ),
+        )
+
+        _attacker_action, defender_action = trainer._behavior_actions(0)
+
+        self.assertEqual(defender_action, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

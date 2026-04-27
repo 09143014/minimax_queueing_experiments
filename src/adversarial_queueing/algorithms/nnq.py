@@ -25,6 +25,8 @@ class NNQConfig:
     log_interval: int = 20
     state_scale: float = 10.0
     state_feature_set: str = "env"
+    forced_defender_action_probability: float = 0.0
+    forced_defender_action: int | None = None
     exploring_starts_probability: float = 0.0
     exploring_starts_max_queue_length: int | None = None
 
@@ -231,14 +233,31 @@ class NNQTrainer:
 
     def _behavior_actions(self, state: Hashable) -> tuple[int, int]:
         if self.rng.random() < self.config.epsilon:
-            return (
-                int(self.rng.choice(self.attacker_actions)),
-                int(self.rng.choice(self.defender_actions)),
-            )
-        game = solve_zero_sum_matrix_game(self.q_matrix(state))
-        attacker = int(self.rng.choice(self.attacker_actions, p=game["attacker_strategy"]))
-        defender = int(self.rng.choice(self.defender_actions, p=game["defender_strategy"]))
+            attacker = int(self.rng.choice(self.attacker_actions))
+            defender = int(self.rng.choice(self.defender_actions))
+        else:
+            game = solve_zero_sum_matrix_game(self.q_matrix(state))
+            attacker = int(self.rng.choice(self.attacker_actions, p=game["attacker_strategy"]))
+            defender = int(self.rng.choice(self.defender_actions, p=game["defender_strategy"]))
+        defender = self._maybe_force_defender_action(defender)
         return attacker, defender
+
+    def _maybe_force_defender_action(self, defender_action: int) -> int:
+        probability = self.config.forced_defender_action_probability
+        if probability <= 0.0:
+            return defender_action
+        if probability > 1.0:
+            raise ValueError("forced_defender_action_probability must be in [0, 1]")
+        if self.config.forced_defender_action is None:
+            raise ValueError(
+                "forced_defender_action is required when defender action forcing is enabled"
+            )
+        forced_action = int(self.config.forced_defender_action)
+        if forced_action not in self.defender_actions:
+            raise ValueError("forced_defender_action must be a valid defender action")
+        if self.rng.random() < probability:
+            return forced_action
+        return defender_action
 
     def _append_replay(
         self,
