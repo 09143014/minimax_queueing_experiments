@@ -27,6 +27,7 @@ nnq:
   seed: 0
   log_interval: 500
   state_scale: 3.0
+  state_feature_set: routing_augmented
   exploring_starts_probability: 0.1
   exploring_starts_max_queue_length: 3
 

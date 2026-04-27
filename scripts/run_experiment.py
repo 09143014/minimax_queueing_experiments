@@ -302,6 +302,7 @@ def main() -> int:
             "algorithm": "nnq",
             "benchmark": env_name,
             "hidden_size": nnq_config.hidden_size,
+            "state_feature_set": nnq_config.state_feature_set,
             "total_steps": nnq_config.total_steps,
             "seed": nnq_config.seed,
             "final_state": _json_state(result.final_state),

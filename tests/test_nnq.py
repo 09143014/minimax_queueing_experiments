@@ -11,6 +11,7 @@ from adversarial_queueing.envs.service_rate_control import (
     ServiceRateControlConfig,
     ServiceRateControlEnv,
 )
+from adversarial_queueing.envs.routing import RoutingConfig, RoutingEnv
 
 
 class NNQTests(unittest.TestCase):
@@ -40,7 +41,28 @@ class NNQTests(unittest.TestCase):
         self.assertEqual(trainer.q_matrix(0).shape, (2, 3))
         self.assertIn("loss", result.metrics[-1])
 
+    def test_routing_augmented_features_expand_state_representation(self):
+        env = RoutingEnv(
+            RoutingConfig(
+                lambda_arrival=2.0,
+                mu_rates=(1.0, 1.5, 2.0),
+                gamma=0.95,
+                uniformization_rate=6.5,
+            )
+        )
+        trainer = NNQTrainer(
+            env,
+            NNQConfig(
+                total_steps=1,
+                hidden_size=8,
+                state_feature_set="routing_augmented",
+                seed=123,
+            ),
+        )
+
+        self.assertEqual(trainer.network.input_size, 19)
+        self.assertEqual(trainer.q_matrix((0, 1, 2)).shape, (2, 2))
+
 
 if __name__ == "__main__":
     unittest.main()
-

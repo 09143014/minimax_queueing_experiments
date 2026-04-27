@@ -24,6 +24,7 @@ class NNQConfig:
     seed: int = 0
     log_interval: int = 20
     state_scale: float = 10.0
+    state_feature_set: str = "env"
     exploring_starts_probability: float = 0.0
     exploring_starts_max_queue_length: int | None = None
 
@@ -281,7 +282,30 @@ class NNQTrainer:
         return float(cost + self.env.discount * next_value)
 
     def _encode_state(self, state: Hashable) -> np.ndarray:
-        return np.asarray(self.env.encode_state(state), dtype=float)
+        if self.config.state_feature_set == "env":
+            return np.asarray(self.env.encode_state(state), dtype=float)
+        if self.config.state_feature_set == "routing_augmented":
+            if not isinstance(self.env, RoutingEnv):
+                raise ValueError("routing_augmented state features require RoutingEnv")
+            x = tuple(float(value) for value in self.env.encode_state(state))
+            mu = tuple(float(value) for value in self.env.config.mu_rates)
+            min_value = min(x)
+            max_value = max(x)
+            return np.asarray(
+                [
+                    *x,
+                    *mu,
+                    *(queue / service_rate for queue, service_rate in zip(x, mu)),
+                    sum(x),
+                    min_value,
+                    max_value,
+                    max_value - min_value,
+                    *(1.0 if value == min_value else 0.0 for value in x),
+                    *(1.0 if value == max_value else 0.0 for value in x),
+                ],
+                dtype=float,
+            )
+        raise ValueError(f"unknown NNQ state_feature_set: {self.config.state_feature_set}")
 
     def _maybe_exploring_start(self, state: Hashable) -> Hashable:
         probability = self.config.exploring_starts_probability

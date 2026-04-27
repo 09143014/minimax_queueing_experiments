@@ -72,3 +72,48 @@ appears to be weak action separation rather than only global Q under-scaling.
 This should not be used as the final NNQ result. The next NNQ step should
 improve action discrimination or trainer stability before running larger
 multi-seed comparisons.
+
+## Action-Separation Debug
+
+The first action-separation fix adds `state_feature_set: routing_augmented` for
+routing NNQ. The augmented state is still environment-only information: queue
+lengths, service rates, queue/service-rate ratios, total load, min/max load,
+imbalance, and min/max queue indicators. It does not use BVI values, BVI
+policies, or bounded reference diagnostics during training.
+
+Command:
+
+```bash
+rtk python scripts/run_experiment.py --config configs/routing_nnq_debug.yaml
+```
+
+Artifact:
+
+```text
+results/routing_nnq_debug/20260427T114634Z
+```
+
+Summary:
+
+- rollout average cost mean: `0.1926`
+- bounded policy comparison mean absolute defend-probability gap: `0.1454`
+- NNQ over-defense states: `0`
+- NNQ under-defense states: `10`
+- NNQ Bellman residual mean: `0.1400`
+- NNQ-vs-bounded-BVI-reference Q gap mean: `2.0613`
+- mean absolute NNQ Q: `5.9647`
+- mean action Q spread: `0.3977`
+- inspected bounded routing states: `64`
+
+This improves action Q spread and Bellman consistency relative to the first
+debug path, without introducing over-defense. It still learns an all-no-defend
+policy on the bounded inspection grid, so it is not final. The next useful NNQ
+step is a targeted policy-calibration fix, not another blind increase in step
+count.
+
+Rejected variants:
+
+- `routing_augmented`, hidden size `32`, balanced action batches: policy gap
+  worsened to `0.6872` with `39` over-defense states.
+- `routing_augmented`, hidden size `64`, no balanced batches: policy gap
+  worsened to `0.3946` with `15` over-defense states.
