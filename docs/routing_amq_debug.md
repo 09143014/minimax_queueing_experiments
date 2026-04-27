@@ -6,6 +6,7 @@ This note records the first non-smoke AMQ debugging configuration for the routin
 
 ```bash
 rtk python3 scripts/run_experiment.py --config configs/routing_amq_debug.yaml
+rtk python3 scripts/run_routing_amq_multiseed.py --config configs/routing_amq_multiseed_debug.yaml
 rtk python3 scripts/run_experiment.py --config configs/routing_smoke.yaml
 rtk python3 -m unittest discover -s tests -v
 ```
@@ -19,7 +20,7 @@ rtk python3 -m unittest discover -s tests -v
 - AMQ steps: `50000`.
 - Defense cost: `0.5`.
 - AMQ step size: constant `eta0=0.001`.
-- Exploring starts: probability `0.5`, bounded grid `0..3` per queue.
+- Exploring starts: probability `0.1`, bounded grid `0..3` per queue.
 - Evaluation: `10` episodes, horizon `50`, seed `300`.
 - Policy inspection: bounded grid `0..3` per queue, defend-probability threshold `0.5`.
 
@@ -41,6 +42,15 @@ Adding bounded exploring starts improves the seed-0 debug policy substantially:
 - AMQ no longer chooses defend everywhere.
 - The seed-0 policy gap against bounded BVI drops sharply compared with the no-exploring-starts debug run.
 - A short multi-seed probe still shows variance, so this is a better debug configuration, not a final result claim.
+- Use `configs/routing_amq_multiseed_debug.yaml` to track this variance explicitly across configured seeds.
+
+The current 3-seed debug run reports:
+
+- mean rollout average cost about `0.266`;
+- mean defend-probability policy gap about `0.215`;
+- mean AMQ Bellman residual about `0.154`;
+- mean AMQ-vs-bounded-BVI-reference Q gap about `0.408`;
+- persistent under-defense on a small set of low-queue states where bounded BVI uses mixed defense.
 
 ## Follow-Up
 

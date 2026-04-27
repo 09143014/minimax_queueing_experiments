@@ -1,0 +1,6 @@
+experiment:
+  name: routing_amq_multiseed_smoke
+  output_dir: results
+
+base_config: configs/routing_amq_smoke.yaml
+seeds: [0, 1]

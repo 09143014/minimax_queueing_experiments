@@ -1,0 +1,6 @@
+experiment:
+  name: routing_amq_multiseed_debug
+  output_dir: results
+
+base_config: configs/routing_amq_debug.yaml
+seeds: [0, 1, 2]
