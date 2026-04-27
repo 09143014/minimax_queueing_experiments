@@ -16,8 +16,8 @@ rtk python3 -m unittest discover -s tests -v
 - Environment: 3 parallel queues.
 - Arrival rate: `2.0`.
 - Service rates: `[1.0, 1.5, 2.0]`.
-- Feature set: `action_interaction`.
-- AMQ steps: `50000`.
+- Feature set: `full_action_interaction`.
+- AMQ steps: `100000`.
 - Defense cost: `0.5`.
 - AMQ step size: constant `eta0=0.001`.
 - Exploring starts: probability `0.1`, bounded grid `0..3` per queue.
@@ -44,13 +44,24 @@ Adding bounded exploring starts improves the seed-0 debug policy substantially:
 - A short multi-seed probe still shows variance, so this is a better debug configuration, not a final result claim.
 - Use `configs/routing_amq_multiseed_debug.yaml` to track this variance explicitly across configured seeds.
 
-The current 3-seed debug run reports:
+The first 3-seed debug run with exploring starts and `action_interaction` reported:
 
 - mean rollout average cost about `0.266`;
 - mean defend-probability policy gap about `0.215`;
 - mean AMQ Bellman residual about `0.154`;
 - mean AMQ-vs-bounded-BVI-reference Q gap about `0.408`;
 - persistent under-defense on a small set of low-queue states where bounded BVI uses mixed defense.
+
+A targeted search then found that `full_action_interaction` with `100000` steps and the same exploring-starts setting improves the policy diagnostics. The current 3-seed debug aggregation reports:
+
+- mean rollout average cost about `0.261`;
+- mean defend-probability policy gap about `0.191`;
+- mean over-defense states about `1.7`;
+- mean under-defense states about `3.7`.
+- mean AMQ Bellman residual about `0.210`;
+- mean AMQ-vs-bounded-BVI-reference Q gap about `1.574`.
+
+This trades off a larger AMQ-vs-bounded-BVI-reference Q gap, so the Q diagnostic remains part of the debug output.
 
 ## Follow-Up
 
