@@ -38,6 +38,7 @@ from adversarial_queueing.evaluation.routing_policy import (
     compare_nnq_bvi_routing_policies,
     nnq_routing_policy_inspection,
     routing_amq_q_diagnostic,
+    routing_nnq_q_diagnostic,
 )
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
 from adversarial_queueing.evaluation.policy_grid import (
@@ -292,6 +293,8 @@ def main() -> int:
                 probability_threshold=policy_grid_config.high_probability_threshold,
             )
             write_jsonl(run_dir / "policy_comparison.jsonl", comparison_rows)
+            q_rows, q_summary = routing_nnq_q_diagnostic(env, trainer, bvi_result)
+            write_jsonl(run_dir / "q_diagnostic.jsonl", q_rows)
         else:
             raise ValueError(f"NNQ runner does not support env.name: {env_name}")
         final_loss = result.metrics[-1]["loss"] if result.metrics else 0.0
@@ -310,6 +313,7 @@ def main() -> int:
         }
         if env_name == "routing":
             summary["policy_comparison"] = comparison_summary
+            summary["q_diagnostic"] = q_summary
             summary["bvi_reference"] = {
                 "role": "bounded_reference_for_evaluation_only",
                 "max_queue_length": max_queue_length,

@@ -9,11 +9,13 @@ from adversarial_queueing.algorithms.bvi import (
     run_bounded_value_iteration,
 )
 from adversarial_queueing.algorithms.amq import AMQConfig, LinearAMQTrainer
+from adversarial_queueing.algorithms.nnq import NNQConfig, NNQTrainer
 from adversarial_queueing.envs.routing import RoutingConfig, RoutingEnv
 from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
     bvi_routing_policy_inspection,
     compare_amq_bvi_routing_policies,
+    routing_nnq_q_diagnostic,
     routing_amq_q_diagnostic,
 )
 from adversarial_queueing.evaluation.rollout import (
@@ -101,6 +103,27 @@ class RoutingPolicyInspectionTests(unittest.TestCase):
         self.assertIn("q_bvi_reference", rows[0])
         self.assertIn("amq_bellman_abs_residual_mean", summary)
         self.assertIn("q_reference_abs_gap_mean", summary)
+        self.assertIn("by_total_queue", summary)
+
+    def test_nnq_q_diagnostic_exports_bellman_reference_and_scale(self):
+        env, result = self.make_result()
+        trainer = NNQTrainer(
+            env,
+            NNQConfig(total_steps=20, batch_size=8, hidden_size=8, seed=7),
+        )
+        trained = trainer.train()
+        trainer.network = trained.network
+        trainer.target_network = trained.network.copy()
+
+        rows, summary = routing_nnq_q_diagnostic(env, trainer, result)
+
+        self.assertEqual(len(rows), len(result.values) * 4)
+        self.assertIn("nnq_bellman_residual", rows[0])
+        self.assertIn("q_bvi_reference", rows[0])
+        self.assertIn("q_action_spread", rows[0])
+        self.assertIn("nnq_bellman_abs_residual_mean", summary)
+        self.assertIn("q_reference_abs_gap_mean", summary)
+        self.assertIn("q_action_spread_mean", summary)
         self.assertIn("by_total_queue", summary)
 
     def test_rollout_summarizes_tuple_states_by_load(self):

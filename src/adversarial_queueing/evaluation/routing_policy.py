@@ -182,6 +182,58 @@ def routing_amq_q_diagnostic(
     return rows, _q_diagnostic_summary(rows)
 
 
+def routing_nnq_q_diagnostic(
+    env: RoutingEnv,
+    trainer: NNQTrainer,
+    bvi_result: BVIResult,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compare NNQ Q values with NNQ Bellman targets and bounded BVI reference Q."""
+
+    rows: list[dict[str, Any]] = []
+    for state in sorted(bvi_result.values, key=_state_sort_key):
+        if not isinstance(state, tuple):
+            raise ValueError("routing Q diagnostic requires tuple states")
+        nnq_matrix = trainer.q_matrix(state)
+        for attacker_action in env.attacker_actions(state):
+            for defender_action in env.defender_actions(state):
+                q_nnq = _nnq_q_value(trainer, state, attacker_action, defender_action)
+                nnq_target = _nnq_bellman_target(
+                    env,
+                    trainer,
+                    state,
+                    attacker_action,
+                    defender_action,
+                )
+                q_bvi_reference = _bvi_q_value(
+                    env,
+                    bvi_result,
+                    state,
+                    attacker_action,
+                    defender_action,
+                )
+                nnq_residual = nnq_target - q_nnq
+                reference_gap = q_nnq - q_bvi_reference
+                rows.append(
+                    {
+                        "state": list(state),
+                        "total_queue": sum(state),
+                        "imbalance": max(state) - min(state),
+                        "attacker_action": int(attacker_action),
+                        "defender_action": int(defender_action),
+                        "q_nnq": float(q_nnq),
+                        "nnq_bellman_target": float(nnq_target),
+                        "nnq_bellman_residual": float(nnq_residual),
+                        "nnq_bellman_abs_residual": abs(float(nnq_residual)),
+                        "q_bvi_reference": float(q_bvi_reference),
+                        "q_reference_signed_gap": float(reference_gap),
+                        "q_reference_abs_gap": abs(float(reference_gap)),
+                        "q_action_spread": float(nnq_matrix.max() - nnq_matrix.min()),
+                        "q_state_mean": float(nnq_matrix.mean()),
+                    }
+                )
+    return rows, _q_diagnostic_summary(rows, method="nnq")
+
+
 def _bvi_game_at_state(env: RoutingEnv, result: BVIResult, state: State) -> dict[str, Any]:
     max_queue_length = result.max_queue_length
     if max_queue_length is None:
@@ -222,7 +274,10 @@ def _bvi_q_value(
         state, attacker_action, defender_action
     ).items():
         expected_next += prob * result.values[_bounded_state(next_state, max_queue_length)]
-    return float(env.cost(state, attacker_action, defender_action) + env.discount * expected_next)
+    return float(
+        env.cost(state, attacker_action, defender_action)
+        + env.discount * expected_next
+    )
 
 
 def _amq_bellman_target(
@@ -238,6 +293,36 @@ def _amq_bellman_target(
     ).items():
         expected_next += prob * trainer.value(next_state)
     return float(env.cost(state, attacker_action, defender_action) + env.discount * expected_next)
+
+
+def _nnq_q_value(
+    trainer: NNQTrainer,
+    state: State,
+    attacker_action: int,
+    defender_action: int,
+) -> float:
+    attacker_index = trainer.attacker_actions.index(attacker_action)
+    defender_index = trainer.defender_actions.index(defender_action)
+    return float(trainer.q_matrix(state)[attacker_index, defender_index])
+
+
+def _nnq_bellman_target(
+    env: RoutingEnv,
+    trainer: NNQTrainer,
+    state: State,
+    attacker_action: int,
+    defender_action: int,
+) -> float:
+    expected_next = 0.0
+    for next_state, prob in env.transition_probabilities(
+        state, attacker_action, defender_action
+    ).items():
+        expected_next += prob * _nnq_value(trainer, next_state)
+    return float(env.cost(state, attacker_action, defender_action) + env.discount * expected_next)
+
+
+def _nnq_value(trainer: NNQTrainer, state: Hashable) -> float:
+    return float(solve_zero_sum_matrix_game(trainer.q_matrix(state))["value"])
 
 
 def _policy_row(
@@ -266,22 +351,38 @@ def _policy_row(
     }
 
 
-def _q_diagnostic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    residuals = np.array([row["amq_bellman_abs_residual"] for row in rows], dtype=float)
+def _q_diagnostic_summary(
+    rows: list[dict[str, Any]],
+    method: str = "amq",
+) -> dict[str, Any]:
+    residual_key = f"{method}_bellman_abs_residual"
+    q_key = f"q_{method}"
+    residuals = np.array([row[residual_key] for row in rows], dtype=float)
     reference_gaps = np.array([row["q_reference_abs_gap"] for row in rows], dtype=float)
-    amq_q_abs = np.array([abs(row["q_amq"]) for row in rows], dtype=float)
+    method_q_abs = np.array([abs(row[q_key]) for row in rows], dtype=float)
     bvi_q_abs = np.array([abs(row["q_bvi_reference"]) for row in rows], dtype=float)
-    return {
+    summary = {
         "num_q_entries": len(rows),
-        "amq_bellman_abs_residual_mean": float(residuals.mean()),
-        "amq_bellman_abs_residual_max": float(residuals.max()),
+        f"{method}_bellman_abs_residual_mean": float(residuals.mean()),
+        f"{method}_bellman_abs_residual_max": float(residuals.max()),
         "q_reference_abs_gap_mean": float(reference_gaps.mean()),
         "q_reference_abs_gap_max": float(reference_gaps.max()),
-        "mean_abs_amq_q": float(amq_q_abs.mean()),
+        f"mean_abs_{method}_q": float(method_q_abs.mean()),
         "mean_abs_bvi_reference_q": float(bvi_q_abs.mean()),
-        "by_total_queue": _group_q_diagnostic_summary(rows, "total_queue"),
-        "by_imbalance": _group_q_diagnostic_summary(rows, "imbalance"),
+        "by_total_queue": _group_q_diagnostic_summary(rows, "total_queue", method),
+        "by_imbalance": _group_q_diagnostic_summary(rows, "imbalance", method),
     }
+    if method == "nnq":
+        action_spreads = np.array([row["q_action_spread"] for row in rows], dtype=float)
+        state_means = np.array([abs(row["q_state_mean"]) for row in rows], dtype=float)
+        summary.update(
+            {
+                "q_action_spread_mean": float(action_spreads.mean()),
+                "q_action_spread_max": float(action_spreads.max()),
+                "mean_abs_q_state_mean": float(state_means.mean()),
+            }
+        )
+    return summary
 
 
 def _comparison_summary(
@@ -353,13 +454,18 @@ def _group_gap_summary(rows: list[dict[str, Any]], key: str) -> list[dict[str, A
     return summaries
 
 
-def _group_q_diagnostic_summary(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+def _group_q_diagnostic_summary(
+    rows: list[dict[str, Any]],
+    key: str,
+    method: str,
+) -> list[dict[str, Any]]:
     groups = sorted({int(row[key]) for row in rows})
     summaries = []
+    residual_key = f"{method}_bellman_abs_residual"
     for group in groups:
         group_rows = [row for row in rows if int(row[key]) == group]
         residuals = np.array(
-            [row["amq_bellman_abs_residual"] for row in group_rows],
+            [row[residual_key] for row in group_rows],
             dtype=float,
         )
         reference_gaps = np.array(
@@ -370,7 +476,7 @@ def _group_q_diagnostic_summary(rows: list[dict[str, Any]], key: str) -> list[di
             {
                 key: group,
                 "num_q_entries": len(group_rows),
-                "amq_bellman_abs_residual_mean": float(residuals.mean()),
+                f"{method}_bellman_abs_residual_mean": float(residuals.mean()),
                 "q_reference_abs_gap_mean": float(reference_gaps.mean()),
             }
         )
