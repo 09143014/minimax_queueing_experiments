@@ -86,6 +86,12 @@ def build_amq_config(data: dict[str, Any]) -> AMQConfig:
             if amq.get("weight_clip") is None
             else float(amq["weight_clip"])
         ),
+        exploring_starts_probability=float(amq.get("exploring_starts_probability", 0.0)),
+        exploring_starts_max_queue_length=(
+            None
+            if amq.get("exploring_starts_max_queue_length") is None
+            else int(amq["exploring_starts_max_queue_length"])
+        ),
     )
 
 

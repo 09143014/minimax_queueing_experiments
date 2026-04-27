@@ -70,6 +70,15 @@ class RoutingTests(unittest.TestCase):
         self.assertIn((5, 1, 2), probs)
         self.assertNotIn((6, 1, 2), probs)
 
+    def test_set_state_validates_and_updates_current_state(self):
+        env = self.make_env()
+
+        state = env.set_state((1, 2, 3))
+
+        self.assertEqual(state, (1, 2, 3))
+        next_state, _cost, _info = env.step(attacker_action=0, defender_action=0)
+        self.assertEqual(len(next_state), 3)
+
     def test_routing_smoke_config_builds(self):
         path = Path(__file__).resolve().parents[1] / "configs" / "routing_smoke.yaml"
         config = build_routing_config(load_config(path))

@@ -69,6 +69,33 @@ class AMQTests(unittest.TestCase):
         self.assertIsInstance(result.final_state, tuple)
         self.assertIsInstance(result.metrics[-1]["state"], list)
 
+    def test_routing_exploring_starts_are_bounded(self):
+        env = RoutingEnv(
+            RoutingConfig(
+                lambda_arrival=2.0,
+                mu_rates=(1.0, 1.5, 2.0),
+                gamma=0.95,
+                uniformization_rate=6.5,
+                bvi_max_queue_length=3,
+            )
+        )
+        trainer = LinearAMQTrainer(
+            env,
+            AMQConfig(
+                feature_set="basic",
+                total_steps=10,
+                eta0=0.001,
+                seed=123,
+                exploring_starts_probability=1.0,
+                exploring_starts_max_queue_length=3,
+            ),
+        )
+
+        result = trainer.train()
+
+        logged_state = result.metrics[0]["state"]
+        self.assertTrue(all(0 <= value <= 3 for value in logged_state))
+
 
 if __name__ == "__main__":
     unittest.main()

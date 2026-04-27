@@ -16,9 +16,10 @@ rtk python3 -m unittest discover -s tests -v
 - Arrival rate: `2.0`.
 - Service rates: `[1.0, 1.5, 2.0]`.
 - Feature set: `action_interaction`.
-- AMQ steps: `10000`.
+- AMQ steps: `50000`.
 - Defense cost: `0.5`.
-- AMQ step size: Robbins-Monro with `eta0=0.01`, `decay_power=0.6`.
+- AMQ step size: constant `eta0=0.001`.
+- Exploring starts: probability `0.5`, bounded grid `0..3` per queue.
 - Evaluation: `10` episodes, horizon `50`, seed `300`.
 - Policy inspection: bounded grid `0..3` per queue, defend-probability threshold `0.5`.
 
@@ -28,18 +29,23 @@ The routing AMQ debug run is intended to test whether the learned defender polic
 
 ## Observed Behavior
 
-The first debug run with `action_interaction` features is non-crashing and exports the expected metrics, rollout rows, and policy inspection rows, but the learned policy is still degenerate:
+The first debug run with `action_interaction` features and no exploring starts was non-crashing and exported the expected metrics, rollout rows, and policy inspection rows, but the learned policy was degenerate:
 
 - AMQ chooses defend with probability `1.0` on all inspected states.
 - BVI on the small routing grid chooses defense selectively, with some low-load states not defended.
 - The policy comparison diagnostic reports the AMQ-vs-bounded-BVI defend-probability gap by state, total queue length, and imbalance.
 - The Q diagnostic reports AMQ Bellman residuals and AMQ-vs-bounded-BVI-reference Q gaps for every inspected `(state, attacker_action, defender_action)` entry.
-- This indicates the routing AMQ path is ready for debugging, but the current feature/training configuration should not be interpreted as a satisfactory learned routing policy.
+
+Adding bounded exploring starts improves the seed-0 debug policy substantially:
+
+- AMQ no longer chooses defend everywhere.
+- The seed-0 policy gap against bounded BVI drops sharply compared with the no-exploring-starts debug run.
+- A short multi-seed probe still shows variance, so this is a better debug configuration, not a final result claim.
 
 ## Follow-Up
 
 - Compare AMQ and BVI policy inspection rows by queue imbalance and total queue length.
 - Run multiple seeds before interpreting policy quality.
 - Tune `defend_cost` and `attack_cost` if the defense policy is degenerate.
-- Add a routing-specific behavior-cloning or Bellman residual diagnostic against BVI rows to see whether the issue is feature expressiveness, learning dynamics, or cost scale.
+- Use the Q diagnostic to track whether training changes reduce AMQ Bellman residuals without increasing AMQ-vs-bounded-BVI-reference Q gaps.
 - Keep BVI labeled as a bounded-state approximate solver, not ground truth.

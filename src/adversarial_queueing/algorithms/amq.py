@@ -28,6 +28,8 @@ class AMQConfig:
     seed: int = 0
     log_interval: int = 10
     weight_clip: float | None = None
+    exploring_starts_probability: float = 0.0
+    exploring_starts_max_queue_length: int | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,7 @@ class LinearAMQTrainer:
         metrics: list[dict[str, Any]] = []
 
         for step in range(1, self.config.total_steps + 1):
+            state = self._maybe_exploring_start(state)
             attacker_action = int(self.rng.choice(self.attacker_actions))
             defender_action = int(self.rng.choice(self.defender_actions))
             next_state, cost, _info = self.env.step(attacker_action, defender_action)
@@ -151,6 +154,27 @@ class LinearAMQTrainer:
         if self.config.learning_rate_schedule == "robbins_monro":
             return float(self.config.eta0 / (step**self.config.decay_power))
         raise ValueError(f"unknown learning_rate_schedule: {self.config.learning_rate_schedule}")
+
+    def _maybe_exploring_start(self, state: Hashable) -> Hashable:
+        probability = self.config.exploring_starts_probability
+        if probability <= 0.0:
+            return state
+        if probability > 1.0:
+            raise ValueError("exploring_starts_probability must be in [0, 1]")
+        if self.rng.random() >= probability:
+            return state
+        if self.config.exploring_starts_max_queue_length is None:
+            raise ValueError("exploring_starts_max_queue_length is required when exploring starts are enabled")
+        if isinstance(self.env, RoutingEnv):
+            bound = int(self.config.exploring_starts_max_queue_length)
+            if bound < 0:
+                raise ValueError("exploring_starts_max_queue_length must be nonnegative")
+            sampled = tuple(
+                int(self.rng.integers(0, bound + 1))
+                for _ in range(self.env.config.num_queues)
+            )
+            return self.env.set_state(sampled)
+        raise ValueError("exploring starts are currently implemented only for routing AMQ")
 
 
 def _json_state(state: Hashable) -> int | list[int]:

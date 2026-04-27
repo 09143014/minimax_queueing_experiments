@@ -25,6 +25,17 @@ class RoutingFeatureTests(unittest.TestCase):
         self.assertEqual(features.shape[0], routing_feature_dim(3, "action_interaction"))
         self.assertEqual(routing_feature_dim(3, "action_interaction"), 27)
 
+    def test_full_action_interaction_feature_dimension(self):
+        features = routing_features(
+            (1, 2, 3),
+            attacker_action=1,
+            defender_action=1,
+            feature_set="full_action_interaction",
+        )
+
+        self.assertEqual(features.shape[0], routing_feature_dim(3, "full_action_interaction"))
+        self.assertEqual(routing_feature_dim(3, "full_action_interaction"), 28)
+
 
 if __name__ == "__main__":
     unittest.main()

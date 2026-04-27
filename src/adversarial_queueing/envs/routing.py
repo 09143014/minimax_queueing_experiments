@@ -88,6 +88,16 @@ class RoutingEnv(BaseAdversarialQueueEnv):
         self._state = self.config.initial_state_value
         return self._state
 
+    def set_state(self, state) -> State:
+        self._state = self._coerce_state(state)
+        return self._state
+
+    def reset_to_state(self, state, seed: int | None = None) -> State:
+        if seed is not None:
+            self._rng = np.random.default_rng(seed)
+        self._state = self._coerce_state(state)
+        return self._state
+
     def attacker_actions(self, state) -> tuple[int, int]:
         return (0, 1)
 
