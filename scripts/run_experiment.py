@@ -35,6 +35,8 @@ from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
     bvi_routing_policy_inspection,
     compare_amq_bvi_routing_policies,
+    compare_nnq_bvi_routing_policies,
+    nnq_routing_policy_inspection,
     routing_amq_q_diagnostic,
 )
 from adversarial_queueing.evaluation.bvi_sensitivity import run_bvi_sensitivity
@@ -249,8 +251,6 @@ def main() -> int:
         return 0
 
     if algorithm == "nnq":
-        if env_name != "service_rate_control":
-            raise ValueError("NNQ runner currently supports only service_rate_control")
         nnq_config = build_nnq_config(config)
         trainer = NNQTrainer(env, nnq_config)
         result = trainer.train()
@@ -264,22 +264,58 @@ def main() -> int:
             config=evaluation_config,
         )
         write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
-        policy_rows, policy_summary = nnq_policy_grid(env, trainer, policy_grid_config)
-        write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+        if env_name == "service_rate_control":
+            policy_rows, policy_summary = nnq_policy_grid(env, trainer, policy_grid_config)
+            write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+            policy_summary_key = "policy_grid"
+        elif env_name == "routing":
+            max_queue_length = int(config.get("bvi", {}).get("max_queue_length", 3))
+            policy_rows, policy_summary = nnq_routing_policy_inspection(
+                env,
+                trainer,
+                max_queue_length=max_queue_length,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
+            policy_summary_key = "policy_inspection"
+            bvi_result = run_bounded_value_iteration(
+                env,
+                max_queue_length=max_queue_length,
+                tolerance=float(config.get("bvi", {}).get("tolerance", 1e-6)),
+                max_iterations=int(config.get("bvi", {}).get("max_iterations", 1000)),
+                states=_bvi_states(env_name, env_config, max_queue_length),
+            )
+            comparison_rows, comparison_summary = compare_nnq_bvi_routing_policies(
+                env,
+                trainer,
+                bvi_result,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_comparison.jsonl", comparison_rows)
+        else:
+            raise ValueError(f"NNQ runner does not support env.name: {env_name}")
         final_loss = result.metrics[-1]["loss"] if result.metrics else 0.0
         summary = {
             "algorithm": "nnq",
-            "benchmark": "service_rate_control",
+            "benchmark": env_name,
             "hidden_size": nnq_config.hidden_size,
             "total_steps": nnq_config.total_steps,
             "seed": nnq_config.seed,
-            "final_state": result.final_state,
+            "final_state": _json_state(result.final_state),
             "final_loss": final_loss,
             "num_logged_metrics": len(result.metrics),
             "evaluation": evaluation.summary,
-            "policy_grid": policy_summary,
+            policy_summary_key: policy_summary,
             "implementation": "numpy_mlp_smoke",
         }
+        if env_name == "routing":
+            summary["policy_comparison"] = comparison_summary
+            summary["bvi_reference"] = {
+                "role": "bounded_reference_for_evaluation_only",
+                "max_queue_length": max_queue_length,
+                "iterations": bvi_result.iterations,
+                "residual": bvi_result.residual,
+            }
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
         print(

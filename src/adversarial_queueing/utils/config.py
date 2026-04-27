@@ -108,6 +108,12 @@ def build_nnq_config(data: dict[str, Any]) -> NNQConfig:
         seed=int(nnq.get("seed", 0)),
         log_interval=int(nnq.get("log_interval", 20)),
         state_scale=float(nnq.get("state_scale", 10.0)),
+        exploring_starts_probability=float(nnq.get("exploring_starts_probability", 0.0)),
+        exploring_starts_max_queue_length=(
+            None
+            if nnq.get("exploring_starts_max_queue_length") is None
+            else int(nnq["exploring_starts_max_queue_length"])
+        ),
     )
 
 

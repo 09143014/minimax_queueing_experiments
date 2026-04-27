@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Hashable
 
 import numpy as np
 
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
-from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
+from adversarial_queueing.envs.base import BaseAdversarialQueueEnv
+from adversarial_queueing.envs.routing import RoutingEnv
 
 
 @dataclass(frozen=True)
@@ -23,13 +24,15 @@ class NNQConfig:
     seed: int = 0
     log_interval: int = 20
     state_scale: float = 10.0
+    exploring_starts_probability: float = 0.0
+    exploring_starts_max_queue_length: int | None = None
 
 
 @dataclass(frozen=True)
 class NNQResult:
     network: "NumpyQNetwork"
     metrics: list[dict[str, Any]]
-    final_state: int
+    final_state: Hashable
 
 
 class NumpyQNetwork:
@@ -38,14 +41,16 @@ class NumpyQNetwork:
     def __init__(
         self,
         hidden_size: int,
+        input_size: int,
         output_size: int,
         rng: np.random.Generator,
         state_scale: float,
     ):
         self.hidden_size = hidden_size
+        self.input_size = input_size
         self.output_size = output_size
         self.state_scale = state_scale
-        self.w1 = rng.normal(0.0, 0.1, size=(1, hidden_size))
+        self.w1 = rng.normal(0.0, 0.1, size=(input_size, hidden_size))
         self.b1 = np.zeros(hidden_size, dtype=float)
         self.w2 = rng.normal(0.0, 0.1, size=(hidden_size, output_size))
         self.b2 = np.zeros(output_size, dtype=float)
@@ -56,6 +61,7 @@ class NumpyQNetwork:
     def copy(self) -> "NumpyQNetwork":
         clone = object.__new__(NumpyQNetwork)
         clone.hidden_size = self.hidden_size
+        clone.input_size = self.input_size
         clone.output_size = self.output_size
         clone.state_scale = self.state_scale
         clone.w1 = self.w1.copy()
@@ -67,18 +73,23 @@ class NumpyQNetwork:
         clone._adam_t = 0
         return clone
 
-    def predict(self, state: int) -> np.ndarray:
-        x = self._input(state)
+    def predict(self, encoded_state: np.ndarray) -> np.ndarray:
+        x = self._input(encoded_state)
         hidden_pre = x @ self.w1 + self.b1
         hidden = np.maximum(hidden_pre, 0.0)
         return (hidden @ self.w2 + self.b2).ravel()
 
-    def q_matrix(self, state: int, num_attacker: int, num_defender: int) -> np.ndarray:
-        return self.predict(state).reshape(num_attacker, num_defender)
+    def q_matrix(
+        self,
+        encoded_state: np.ndarray,
+        num_attacker: int,
+        num_defender: int,
+    ) -> np.ndarray:
+        return self.predict(encoded_state).reshape(num_attacker, num_defender)
 
     def train_batch(
         self,
-        states: np.ndarray,
+        encoded_states: np.ndarray,
         action_indices: np.ndarray,
         targets: np.ndarray,
         learning_rate: float,
@@ -89,8 +100,10 @@ class NumpyQNetwork:
         grad_b2 = np.zeros_like(self.b2)
         losses = []
 
-        for state, action_index, target in zip(states, action_indices, targets):
-            x = self._input(int(state))
+        for encoded_state, action_index, target in zip(
+            encoded_states, action_indices, targets
+        ):
+            x = self._input(encoded_state)
             hidden_pre = x @ self.w1 + self.b1
             hidden = np.maximum(hidden_pre, 0.0)
             output = (hidden @ self.w2 + self.b2).ravel()
@@ -98,7 +111,7 @@ class NumpyQNetwork:
             losses.append(error * error)
 
             grad_output = np.zeros(self.output_size, dtype=float)
-            grad_output[int(action_index)] = 2.0 * error / len(states)
+            grad_output[int(action_index)] = 2.0 * error / len(encoded_states)
             grad_w2 += np.outer(hidden.ravel(), grad_output)
             grad_b2 += grad_output
             grad_hidden = grad_output @ self.w2.T
@@ -117,8 +130,9 @@ class NumpyQNetwork:
         )
         return float(np.mean(losses))
 
-    def _input(self, state: int) -> np.ndarray:
-        return np.array([[float(state) / self.state_scale]], dtype=float)
+    def _input(self, encoded_state: np.ndarray) -> np.ndarray:
+        x = np.asarray(encoded_state, dtype=float).reshape(1, self.input_size)
+        return x / self.state_scale
 
     def _zeros_like_params(self) -> dict[str, np.ndarray]:
         return {
@@ -143,33 +157,43 @@ class NumpyQNetwork:
 
 
 class NNQTrainer:
-    """Small NNQ trainer for service-rate-control smoke experiments."""
+    """Small NumPy NNQ trainer for finite-action benchmark smoke experiments."""
 
-    def __init__(self, env: ServiceRateControlEnv, config: NNQConfig):
+    def __init__(self, env: BaseAdversarialQueueEnv, config: NNQConfig):
         self.env = env
         self.config = config
         self.rng = np.random.default_rng(config.seed)
-        self.attacker_actions = tuple(env.attacker_actions(env.config.initial_state))
-        self.defender_actions = tuple(env.defender_actions(env.config.initial_state))
+        initial_state = env.reset(seed=config.seed)
+        self.attacker_actions = tuple(env.attacker_actions(initial_state))
+        self.defender_actions = tuple(env.defender_actions(initial_state))
+        self._attacker_action_to_index = {
+            int(action): index for index, action in enumerate(self.attacker_actions)
+        }
+        self._defender_action_to_index = {
+            int(action): index for index, action in enumerate(self.defender_actions)
+        }
         output_size = len(self.attacker_actions) * len(self.defender_actions)
+        input_size = len(self._encode_state(initial_state))
         self.network = NumpyQNetwork(
             hidden_size=config.hidden_size,
+            input_size=input_size,
             output_size=output_size,
             rng=self.rng,
             state_scale=config.state_scale,
         )
         self.target_network = self.network.copy()
-        self.replay: list[tuple[int, int, int, float, int]] = []
+        self.replay: list[tuple[Hashable, int, int, float, Hashable]] = []
 
     def train(self) -> NNQResult:
-        state = int(self.env.reset(seed=self.config.seed))
+        state = self.env.reset(seed=self.config.seed)
         metrics: list[dict[str, Any]] = []
         last_loss = 0.0
 
         for step in range(1, self.config.total_steps + 1):
+            state = self._maybe_exploring_start(state)
             attacker_action, defender_action = self._behavior_actions(state)
             next_state, cost, _info = self.env.step(attacker_action, defender_action)
-            self._append_replay(state, attacker_action, defender_action, float(cost), int(next_state))
+            self._append_replay(state, attacker_action, defender_action, float(cost), next_state)
 
             if len(self.replay) >= self.config.batch_size:
                 last_loss = self._train_one_batch()
@@ -181,24 +205,30 @@ class NNQTrainer:
                 metrics.append(
                     {
                         "step": step,
-                        "state": state,
+                        "state": _json_state(state),
                         "attacker_action": attacker_action,
                         "defender_action": defender_action,
-                        "next_state": int(next_state),
+                        "next_state": _json_state(next_state),
                         "cost": float(cost),
                         "loss": float(last_loss),
-                        "q_norm": float(np.linalg.norm(self.network.predict(state))),
+                        "q_norm": float(
+                            np.linalg.norm(self.network.predict(self._encode_state(state)))
+                        ),
                         "replay_size": len(self.replay),
                     }
                 )
-            state = int(next_state)
+            state = next_state
 
         return NNQResult(network=self.network.copy(), metrics=metrics, final_state=state)
 
-    def q_matrix(self, state: int) -> np.ndarray:
-        return self.network.q_matrix(state, len(self.attacker_actions), len(self.defender_actions))
+    def q_matrix(self, state: Hashable) -> np.ndarray:
+        return self.network.q_matrix(
+            self._encode_state(state),
+            len(self.attacker_actions),
+            len(self.defender_actions),
+        )
 
-    def _behavior_actions(self, state: int) -> tuple[int, int]:
+    def _behavior_actions(self, state: Hashable) -> tuple[int, int]:
         if self.rng.random() < self.config.epsilon:
             return (
                 int(self.rng.choice(self.attacker_actions)),
@@ -211,11 +241,11 @@ class NNQTrainer:
 
     def _append_replay(
         self,
-        state: int,
+        state: Hashable,
         attacker_action: int,
         defender_action: int,
         cost: float,
-        next_state: int,
+        next_state: Hashable,
     ) -> None:
         self.replay.append((state, attacker_action, defender_action, cost, next_state))
         if len(self.replay) > self.config.replay_capacity:
@@ -224,22 +254,60 @@ class NNQTrainer:
     def _train_one_batch(self) -> float:
         indices = self.rng.choice(len(self.replay), size=self.config.batch_size, replace=False)
         batch = [self.replay[int(index)] for index in indices]
-        states = np.array([item[0] for item in batch], dtype=int)
+        encoded_states = np.vstack([self._encode_state(item[0]) for item in batch])
         action_indices = np.array(
             [
-                item[1] * len(self.defender_actions) + item[2]
+                self._attacker_action_to_index[item[1]] * len(self.defender_actions)
+                + self._defender_action_to_index[item[2]]
                 for item in batch
             ],
             dtype=int,
         )
         targets = np.array([self._target(item[3], item[4]) for item in batch], dtype=float)
-        return self.network.train_batch(states, action_indices, targets, self.config.learning_rate)
+        return self.network.train_batch(
+            encoded_states,
+            action_indices,
+            targets,
+            self.config.learning_rate,
+        )
 
-    def _target(self, cost: float, next_state: int) -> float:
+    def _target(self, cost: float, next_state: Hashable) -> float:
         next_matrix = self.target_network.q_matrix(
-            next_state,
+            self._encode_state(next_state),
             len(self.attacker_actions),
             len(self.defender_actions),
         )
         next_value = solve_zero_sum_matrix_game(next_matrix)["value"]
         return float(cost + self.env.discount * next_value)
+
+    def _encode_state(self, state: Hashable) -> np.ndarray:
+        return np.asarray(self.env.encode_state(state), dtype=float)
+
+    def _maybe_exploring_start(self, state: Hashable) -> Hashable:
+        probability = self.config.exploring_starts_probability
+        if probability <= 0.0:
+            return state
+        if probability > 1.0:
+            raise ValueError("exploring_starts_probability must be in [0, 1]")
+        if self.rng.random() >= probability:
+            return state
+        if self.config.exploring_starts_max_queue_length is None:
+            raise ValueError(
+                "exploring_starts_max_queue_length is required when exploring starts are enabled"
+            )
+        if isinstance(self.env, RoutingEnv):
+            bound = int(self.config.exploring_starts_max_queue_length)
+            if bound < 0:
+                raise ValueError("exploring_starts_max_queue_length must be nonnegative")
+            sampled = tuple(
+                int(self.rng.integers(0, bound + 1))
+                for _ in range(self.env.config.num_queues)
+            )
+            return self.env.set_state(sampled)
+        raise ValueError("exploring starts are currently implemented only for routing NNQ")
+
+
+def _json_state(state: Hashable) -> int | list[int]:
+    if isinstance(state, tuple):
+        return [int(value) for value in state]
+    return int(state)

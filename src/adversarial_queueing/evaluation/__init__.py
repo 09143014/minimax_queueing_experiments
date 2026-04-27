@@ -17,6 +17,8 @@ from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
     bvi_routing_policy_inspection,
     compare_amq_bvi_routing_policies,
+    compare_nnq_bvi_routing_policies,
+    nnq_routing_policy_inspection,
     routing_amq_q_diagnostic,
 )
 from adversarial_queueing.evaluation.policy_grid import (
@@ -36,6 +38,8 @@ __all__ = [
     "bvi_policy_grid",
     "bvi_routing_policy_inspection",
     "compare_amq_bvi_routing_policies",
+    "compare_nnq_bvi_routing_policies",
+    "nnq_routing_policy_inspection",
     "routing_amq_q_diagnostic",
     "nnq_policy_grid",
     "evaluate_policy",

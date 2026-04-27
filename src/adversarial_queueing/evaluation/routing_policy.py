@@ -9,6 +9,7 @@ import numpy as np
 from adversarial_queueing.algorithms.amq import LinearAMQTrainer
 from adversarial_queueing.algorithms.bvi import BVIResult
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
+from adversarial_queueing.algorithms.nnq import NNQTrainer
 from adversarial_queueing.envs.routing import RoutingEnv, State
 
 
@@ -47,6 +48,25 @@ def amq_routing_policy_inspection(
     return rows, _summary(rows, probability_threshold)
 
 
+def nnq_routing_policy_inspection(
+    env: RoutingEnv,
+    trainer: NNQTrainer,
+    max_queue_length: int,
+    probability_threshold: float = 0.5,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Inspect NNQ defender strategies across a bounded routing state grid."""
+
+    rows: list[dict[str, Any]] = []
+    states = sorted(
+        _routing_states(env.config.num_queues, max_queue_length),
+        key=_state_sort_key,
+    )
+    for state in states:
+        game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        rows.append(_policy_row("nnq", env, state, game))
+    return rows, _summary(rows, probability_threshold)
+
+
 def compare_amq_bvi_routing_policies(
     env: RoutingEnv,
     trainer: LinearAMQTrainer,
@@ -78,6 +98,39 @@ def compare_amq_bvi_routing_policies(
             }
         )
     return rows, _comparison_summary(rows, probability_threshold)
+
+
+def compare_nnq_bvi_routing_policies(
+    env: RoutingEnv,
+    trainer: NNQTrainer,
+    bvi_result: BVIResult,
+    probability_threshold: float = 0.5,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compare NNQ defender policy against a bounded BVI reference policy."""
+
+    rows: list[dict[str, Any]] = []
+    for state in sorted(bvi_result.values, key=_state_sort_key):
+        if not isinstance(state, tuple):
+            raise ValueError("routing policy comparison requires tuple states")
+        nnq_game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        bvi_game = _bvi_game_at_state(env, bvi_result, state)
+        p_defend_nnq = float(nnq_game["defender_strategy"][1])
+        p_defend_bvi = float(bvi_game["defender_strategy"][1])
+        signed_gap = p_defend_nnq - p_defend_bvi
+        rows.append(
+            {
+                "state": list(state),
+                "total_queue": sum(state),
+                "imbalance": max(state) - min(state),
+                "p_defend_nnq": p_defend_nnq,
+                "p_defend_bvi_reference": p_defend_bvi,
+                "p_defend_signed_gap": signed_gap,
+                "p_defend_abs_gap": abs(signed_gap),
+                "nnq_over_defends": bool(signed_gap >= probability_threshold),
+                "nnq_under_defends": bool(signed_gap <= -probability_threshold),
+            }
+        )
+    return rows, _comparison_summary(rows, probability_threshold, method="nnq")
 
 
 def routing_amq_q_diagnostic(
@@ -234,23 +287,26 @@ def _q_diagnostic_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _comparison_summary(
     rows: list[dict[str, Any]],
     probability_threshold: float,
+    method: str = "amq",
 ) -> dict[str, Any]:
     abs_gaps = np.array([row["p_defend_abs_gap"] for row in rows], dtype=float)
     signed_gaps = np.array([row["p_defend_signed_gap"] for row in rows], dtype=float)
-    over_defend_rows = [row for row in rows if row["amq_over_defends"]]
-    under_defend_rows = [row for row in rows if row["amq_under_defends"]]
+    over_key = f"{method}_over_defends"
+    under_key = f"{method}_under_defends"
+    over_defend_rows = [row for row in rows if row[over_key]]
+    under_defend_rows = [row for row in rows if row[under_key]]
     return {
         "num_compared_states": len(rows),
         "p_defend_abs_gap_mean": float(abs_gaps.mean()),
         "p_defend_abs_gap_max": float(abs_gaps.max()),
         "p_defend_signed_gap_mean": float(signed_gaps.mean()),
         "gap_probability_threshold": probability_threshold,
-        "num_states_amq_over_defends": len(over_defend_rows),
-        "num_states_amq_under_defends": len(under_defend_rows),
-        "first_state_amq_over_defends": (
+        f"num_states_{method}_over_defends": len(over_defend_rows),
+        f"num_states_{method}_under_defends": len(under_defend_rows),
+        f"first_state_{method}_over_defends": (
             None if not over_defend_rows else over_defend_rows[0]["state"]
         ),
-        "first_state_amq_under_defends": (
+        f"first_state_{method}_under_defends": (
             None if not under_defend_rows else under_defend_rows[0]["state"]
         ),
         "by_total_queue": _group_gap_summary(rows, "total_queue"),
