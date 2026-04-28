@@ -1,0 +1,6 @@
+experiment:
+  name: service_rate_control_multiseed_smoke_comparison
+  output_dir: results
+
+base_config: configs/service_rate_comparison_smoke.yaml
+seeds: [0, 1]

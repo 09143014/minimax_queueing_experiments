@@ -40,6 +40,7 @@ python scripts/run_routing_comparison.py --config configs/routing_comparison_deb
 python scripts/run_routing_comparison_multiseed.py --config configs/routing_comparison_multiseed_debug.yaml
 python scripts/run_routing_comparison_multiseed.py --config configs/routing_comparison_normalized_amq_multiseed_eval50_debug.yaml
 python scripts/run_service_rate_comparison.py --config configs/service_rate_comparison.yaml
+python scripts/run_service_rate_comparison_multiseed.py --config configs/service_rate_comparison_multiseed.yaml
 python -m unittest discover -s tests
 ```
 
@@ -58,6 +59,17 @@ selected AMQ performance baseline, while fitted AMQ is a calibration diagnostic.
 Fitted calibration improves policy-shape diagnostics but reduces defense mass on
 states visited by the common BVI attacker, so it is not the selected performance
 result.
+
+For the current service-rate-control result, rebuild the report from the latest
+3-seed debug comparison:
+
+```bash
+python scripts/build_service_rate_report.py --summary results/service_rate_control_multiseed_debug_comparison/20260428T093705Z/summary.json --json-output results/service_rate_control_report.json --markdown-output results/service_rate_control_report.md
+```
+
+The current service-rate-control conclusion is also narrow: BVI is strongest on
+the debug comparison, AMQ is consistently better than NNQ, and NNQ does not yet
+show the high-service threshold behavior seen in BVI and AMQ.
 
 If `pytest` is installed, the tests are also pytest-compatible:
 
