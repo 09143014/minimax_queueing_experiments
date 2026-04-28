@@ -86,3 +86,13 @@ Summary of that follow-up: forced low/medium behavior, uniform exploration,
 state-scale adjustment, longer training, and lower learning rate all failed to
 fix state 0 high-service overuse. This makes blind NNQ config tuning a poor next
 step.
+
+Repair diagnostic:
+
+`docs/service_rate_nnq_repair_diagnostic.md`
+
+The 3-seed repair diagnostic shows that changing only the rollout policy at
+`state == 0` from NNQ's high service to low service improves mean NNQ cost from
+`0.517298` to `0.392079`. Broader low-state overrides are worse, so the useful
+signal is narrow: empty-state over-service is real, but broad benchmark-specific
+policy overrides should not be folded into raw NNQ.
