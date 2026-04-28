@@ -60,7 +60,7 @@ rtk python scripts/run_polling_comparison.py --config configs/polling_comparison
 
 Latest run:
 
-`results/polling_smoke_comparison/20260428T132022Z`
+`results/polling_smoke_comparison/20260428T144648Z`
 
 Average cost:
 
@@ -71,18 +71,39 @@ Average cost:
 This is a smoke result only. It proves the benchmark loop runs, not that the
 polling ranking is meaningful.
 
+## Policy Inspection
+
+Polling smoke runs now export `policy_inspection.jsonl` and a compact
+`policy_inspection` summary. The latest smoke comparison shows:
+
+| Method | Mean p_defend | States p_defend >= 0.5 | Gap states p_defend >= 0.5 |
+|---|---:|---:|---:|
+| BVI | `0.291427` | `12 / 32` | `12 / 24` |
+| AMQ | `0.000000` | `0 / 32` | `0 / 24` |
+| NNQ | `1.000000` | `32 / 32` | `24 / 24` |
+
+Interpretation:
+
+- BVI has a nontrivial gap-dependent defense policy.
+- AMQ smoke currently degenerates to never defending.
+- NNQ smoke currently degenerates to always defending.
+
+Therefore the NNQ smoke cost should not be read as a meaningful polling
+performance result. The next polling step should inspect and calibrate these
+policy shapes before increasing budgets.
+
 ## Verification
 
 ```bash
 rtk python -m py_compile src/adversarial_queueing/envs/polling.py src/adversarial_queueing/features/polling_features.py src/adversarial_queueing/algorithms/amq.py src/adversarial_queueing/utils/config.py src/adversarial_queueing/evaluation/rollout.py scripts/run_experiment.py scripts/run_polling_comparison.py
-rtk python -m unittest tests/test_polling.py tests/test_polling_features.py tests/test_polling_comparison_runner.py tests/test_rollout_evaluation.py tests/test_amq.py tests/test_nnq.py
+rtk python -m unittest tests/test_polling.py tests/test_polling_features.py tests/test_polling_policy_inspection.py tests/test_polling_comparison_runner.py tests/test_rollout_evaluation.py tests/test_amq.py tests/test_nnq.py
 ```
 
 ## Next Steps
 
 The next polling work should stay minimal:
 
-1. Add policy inspection for polling decisions across bounded states.
-2. Add a 3-seed polling debug comparison.
-3. Inspect whether the current smoke parameters are degenerate before increasing
-   budgets.
+1. Add a small polling policy-shape diagnostic report builder.
+2. Calibrate AMQ/NNQ smoke settings enough to avoid always-defend /
+   never-defend degeneracy.
+3. Only then add a 3-seed polling debug comparison.

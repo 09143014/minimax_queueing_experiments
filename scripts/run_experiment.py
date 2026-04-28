@@ -51,6 +51,11 @@ from adversarial_queueing.evaluation.policy_grid import (
     bvi_policy_grid,
     nnq_policy_grid,
 )
+from adversarial_queueing.evaluation.polling_policy import (
+    amq_polling_policy_inspection,
+    bvi_polling_policy_inspection,
+    nnq_polling_policy_inspection,
+)
 from adversarial_queueing.utils.config import (
     build_amq_config,
     build_bvi_sensitivity_config,
@@ -188,6 +193,14 @@ def main() -> int:
             policy_rows, policy_summary = bvi_policy_grid(env, result, policy_grid_config)
             write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
             summary["policy_grid"] = policy_summary
+        elif env_name == "polling":
+            policy_rows, policy_summary = bvi_polling_policy_inspection(
+                env,
+                result,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
+            summary["policy_inspection"] = policy_summary
         summary["evaluation"] = evaluation.summary
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
@@ -293,10 +306,21 @@ def main() -> int:
                 },
             }
         elif env_name == "polling":
+            max_queue_length = int(
+                config.get("bvi", {}).get(
+                    "max_queue_length",
+                    config.get("policy_grid", {}).get("max_state", 3),
+                )
+            )
+            policy_rows, policy_summary = amq_polling_policy_inspection(
+                env,
+                trainer,
+                max_queue_length=max_queue_length,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
             policy_summary_key = "policy_inspection"
-            policy_summary_value = {
-                "role": "not_implemented_for_polling_smoke",
-            }
+            policy_summary_value = policy_summary
         else:
             raise ValueError(f"AMQ runner does not support env.name: {env_name}")
         final_td_error = result.metrics[-1]["td_error"] if result.metrics else 0.0
@@ -417,9 +441,19 @@ def main() -> int:
                 bvi_attacker_evaluation.rows,
             )
         elif env_name == "polling":
-            policy_summary = {
-                "role": "not_implemented_for_polling_smoke",
-            }
+            max_queue_length = int(
+                config.get("bvi", {}).get(
+                    "max_queue_length",
+                    config.get("policy_grid", {}).get("max_state", 3),
+                )
+            )
+            policy_rows, policy_summary = nnq_polling_policy_inspection(
+                env,
+                trainer,
+                max_queue_length=max_queue_length,
+                probability_threshold=policy_grid_config.high_probability_threshold,
+            )
+            write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
             policy_summary_key = "policy_inspection"
         else:
             raise ValueError(f"NNQ runner does not support env.name: {env_name}")

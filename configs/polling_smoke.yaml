@@ -30,3 +30,7 @@ evaluation:
   seed: 400
   tail_threshold: 8
   boundary_state: 10
+
+policy_grid:
+  max_state: 3
+  high_probability_threshold: 0.5
