@@ -24,7 +24,6 @@ from adversarial_queueing.utils.config import load_config
 from adversarial_queueing.utils.output import create_run_dir, write_json, write_jsonl
 
 
-METHODS = ("bvi", "amq", "nnq")
 METRICS = (
     "average_cost_mean",
     "discounted_cost_mean",
@@ -46,7 +45,7 @@ def main() -> int:
     seeds = tuple(int(seed) for seed in config["seeds"])
     base_config_path = Path(config["base_config"])
     base_config = load_config(base_config_path)
-    _validate_base_config(base_config)
+    methods = _validate_base_config(base_config)
 
     run_dir = create_run_dir(
         config["experiment"].get("output_dir", "results"),
@@ -81,9 +80,10 @@ def main() -> int:
         "base_config": str(base_config_path),
         "num_seeds": len(seeds),
         "seeds": list(seeds),
+        "methods": list(methods),
         "rows": rows,
-        "aggregate": _aggregate(rows),
-        "ranking_counts": _ranking_counts(rows),
+        "aggregate": _aggregate(rows, methods),
+        "ranking_counts": _ranking_counts(rows, methods),
     }
     write_json(run_dir / "summary.json", summary)
     print(f"wrote {run_dir}")
@@ -92,20 +92,21 @@ def main() -> int:
         "summary: "
         f"seeds={list(seeds)} "
         f"best_counts={summary['ranking_counts']['average_cost']} "
-        f"amq_mean={aggregate['amq']['average_cost_mean']['mean']:.6g} "
-        f"nnq_mean={aggregate['nnq']['average_cost_mean']['mean']:.6g} "
-        f"bvi_mean={aggregate['bvi']['average_cost_mean']['mean']:.6g}"
+        f"means={_mean_cost_text(aggregate)}"
     )
     return 0
 
 
-def _validate_base_config(config: dict[str, Any]) -> None:
+def _validate_base_config(config: dict[str, Any]) -> tuple[str, ...]:
     if "runs" not in config:
         raise ValueError("multiseed base_config must be a service-rate comparison config")
     methods = [str(run["method"]) for run in config["runs"]]
-    for method in METHODS:
+    for method in ("bvi", "amq", "nnq"):
         if method not in methods:
             raise ValueError(f"base_config is missing method {method}")
+    if len(set(methods)) != len(methods):
+        raise ValueError("base_config contains duplicate method names")
+    return tuple(methods)
 
 
 def _write_seed_config(
@@ -119,8 +120,9 @@ def _write_seed_config(
         method = str(run["method"])
         source_path = Path(run["config"])
         method_config = load_config(source_path)
-        if method in {"amq", "nnq"}:
-            method_config.setdefault(method, {})["seed"] = seed
+        algorithm = str(method_config["algorithm"]["name"])
+        if algorithm in {"amq", "nnq"}:
+            method_config.setdefault(algorithm, {})["seed"] = seed
         evaluation = method_config.setdefault("evaluation", {})
         evaluation["seed"] = int(evaluation.get("seed", 0)) + seed
         method_config_path = seed_dir / f"{method}.yaml"
@@ -194,9 +196,12 @@ def _comparison(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _aggregate(rows: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float]]]:
+def _aggregate(
+    rows: list[dict[str, Any]],
+    methods: tuple[str, ...],
+) -> dict[str, dict[str, dict[str, float]]]:
     aggregate = {}
-    for method in METHODS:
+    for method in methods:
         method_rows = [_method_row(row, method) for row in rows]
         aggregate[method] = {
             metric: _mean_std(method_rows, metric)
@@ -213,12 +218,22 @@ def _method_row(row: dict[str, Any], method: str) -> dict[str, Any]:
     raise ValueError(f"seed {row['seed']} is missing method {method}")
 
 
-def _ranking_counts(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
-    counts = {"average_cost": {method: 0 for method in METHODS}}
+def _ranking_counts(
+    rows: list[dict[str, Any]],
+    methods: tuple[str, ...],
+) -> dict[str, dict[str, int]]:
+    counts = {"average_cost": {method: 0 for method in methods}}
     for row in rows:
         for method in row["comparison"]["best_average_cost_methods"]:
             counts["average_cost"][method] += 1
     return counts
+
+
+def _mean_cost_text(aggregate: dict[str, dict[str, dict[str, float]]]) -> str:
+    return ", ".join(
+        f"{method}={values['average_cost_mean']['mean']:.6g}"
+        for method, values in aggregate.items()
+    )
 
 
 def _mean_std(rows: list[dict[str, Any]], key: str) -> dict[str, float]:

@@ -9,4 +9,5 @@ runs:
     config: configs/amq_debug.yaml
   - method: nnq
     config: configs/nnq_debug.yaml
-
+  - method: nnq_state0_guard
+    config: configs/nnq_state0_guard_debug.yaml

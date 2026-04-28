@@ -39,9 +39,14 @@ class ServiceRateReportTests(unittest.TestCase):
             self.assertEqual(report["benchmark"], "service_rate_control")
             self.assertAlmostEqual(report["conclusion"]["amq_margin_vs_nnq"], 0.15)
             self.assertAlmostEqual(report["conclusion"]["amq_gap_vs_bvi"], 0.05)
+            self.assertAlmostEqual(
+                report["conclusion"]["nnq_state0_guard_margin_vs_nnq"],
+                0.10,
+            )
             markdown = output_md.read_text(encoding="utf-8")
             self.assertIn("Service-Rate-Control Report", markdown)
             self.assertIn("Per-Seed Average Cost", markdown)
+            self.assertIn("NNQ+state0 guard", markdown)
 
 
 def _summary() -> dict:
@@ -61,12 +66,17 @@ def _summary() -> dict:
                 "average_cost_mean": {"mean": 0.50},
                 "first_state_p_high_at_least_threshold": {"mean": 0.0},
             },
+            "nnq_state0_guard": {
+                "average_cost_mean": {"mean": 0.40},
+                "first_state_p_high_at_least_threshold": {"mean": 1.0},
+            },
         },
         "ranking_counts": {
             "average_cost": {
                 "bvi": 1,
                 "amq": 0,
                 "nnq": 0,
+                "nnq_state0_guard": 0,
             },
         },
         "rows": [
@@ -76,6 +86,7 @@ def _summary() -> dict:
                     {"method": "bvi", "average_cost_mean": 0.30},
                     {"method": "amq", "average_cost_mean": 0.35},
                     {"method": "nnq", "average_cost_mean": 0.50},
+                    {"method": "nnq_state0_guard", "average_cost_mean": 0.40},
                 ],
             },
         ],

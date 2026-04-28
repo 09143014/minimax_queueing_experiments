@@ -9,3 +9,5 @@ runs:
     config: configs/amq_smoke.yaml
   - method: nnq
     config: configs/nnq_smoke.yaml
+  - method: nnq_state0_guard
+    config: configs/nnq_state0_guard_smoke.yaml

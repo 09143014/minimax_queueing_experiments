@@ -31,7 +31,7 @@ class ServiceRateComparisonMultiseedRunnerTests(unittest.TestCase):
         self.assertEqual(summary["seeds"], [0, 1])
         self.assertEqual(len(summary["rows"]), 2)
         self.assertIn("average_cost", summary["ranking_counts"])
-        for method in ("bvi", "amq", "nnq"):
+        for method in ("bvi", "amq", "nnq", "nnq_state0_guard"):
             self.assertIn(method, summary["aggregate"])
             self.assertIn("average_cost_mean", summary["aggregate"][method])
 

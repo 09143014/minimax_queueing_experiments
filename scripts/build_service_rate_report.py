@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-METHODS = ("bvi", "amq", "nnq")
+REQUIRED_METHODS = ("bvi", "amq", "nnq")
 
 
 def main() -> int:
@@ -37,19 +37,21 @@ def main() -> int:
 def build_report(summary_path: Path) -> dict[str, Any]:
     summary = _read_json(summary_path)
     aggregate = summary["aggregate"]
+    methods = _ordered_methods(aggregate)
     costs = {
         method: float(aggregate[method]["average_cost_mean"]["mean"])
-        for method in METHODS
+        for method in methods
     }
     thresholds = {
         method: aggregate[method].get("first_state_p_high_at_least_threshold", {}).get(
             "mean"
         )
-        for method in METHODS
+        for method in methods
     }
     return {
         "benchmark": "service_rate_control",
         "source": str(summary_path),
+        "methods": list(methods),
         "num_seeds": int(summary["num_seeds"]),
         "seeds": summary["seeds"],
         "average_cost_mean": costs,
@@ -60,6 +62,16 @@ def build_report(summary_path: Path) -> dict[str, Any]:
             "selected_amq_baseline": "amq",
             "amq_margin_vs_nnq": costs["nnq"] - costs["amq"],
             "amq_gap_vs_bvi": costs["amq"] - costs["bvi"],
+            "nnq_state0_guard_margin_vs_nnq": (
+                None
+                if "nnq_state0_guard" not in costs
+                else costs["nnq"] - costs["nnq_state0_guard"]
+            ),
+            "nnq_state0_guard_gap_vs_amq": (
+                None
+                if "nnq_state0_guard" not in costs
+                else costs["nnq_state0_guard"] - costs["amq"]
+            ),
             "summary": (
                 "BVI is the strongest method on this service-rate-control debug "
                 "comparison. AMQ is consistently better than NNQ, but remains "
@@ -84,12 +96,17 @@ def render_markdown(report: dict[str, Any]) -> str:
         "| Method | Mean cost | Best-count | First high-service state |",
         "| --- | ---: | ---: | ---: |",
     ]
-    labels = {"bvi": "BVI", "amq": "AMQ", "nnq": "NNQ"}
-    for method in METHODS:
+    labels = {
+        "bvi": "BVI",
+        "amq": "AMQ",
+        "nnq": "NNQ",
+        "nnq_state0_guard": "NNQ+state0 guard",
+    }
+    for method in report["methods"]:
         threshold = report["first_state_p_high_at_least_threshold_mean"][method]
         threshold_text = "n/a" if threshold is None else _format_float(float(threshold))
         lines.append(
-            f"| {labels[method]} | "
+            f"| {labels.get(method, method)} | "
             f"{_format_float(report['average_cost_mean'][method])} | "
             f"{report['ranking_counts'][method]} | {threshold_text} |"
         )
@@ -98,14 +115,17 @@ def render_markdown(report: dict[str, Any]) -> str:
             "",
             "## Per-Seed Average Cost",
             "",
-            "| Seed | BVI | AMQ | NNQ |",
-            "| ---: | ---: | ---: | ---: |",
+            "| Seed | "
+            + " | ".join(labels.get(method, method) for method in report["methods"])
+            + " |",
+            "| ---: | " + " | ".join("---:" for _ in report["methods"]) + " |",
         ]
     )
     for row in report["per_seed_average_cost"]:
         lines.append(
-            f"| {row['seed']} | {_format_float(row['bvi'])} | "
-            f"{_format_float(row['amq'])} | {_format_float(row['nnq'])} |"
+            f"| {row['seed']} | "
+            + " | ".join(_format_float(row[method]) for method in report["methods"])
+            + " |"
         )
     conclusion = report["conclusion"]
     lines.extend(
@@ -120,9 +140,21 @@ def render_markdown(report: dict[str, Any]) -> str:
             ),
             "",
             conclusion["summary"],
-            "",
         ]
     )
+    if conclusion["nnq_state0_guard_margin_vs_nnq"] is not None:
+        lines.extend(
+            [
+                "",
+                (
+                    "NNQ+state0 guard improves over raw NNQ by "
+                    f"{_format_float(conclusion['nnq_state0_guard_margin_vs_nnq'])}, "
+                    "and trails AMQ by "
+                    f"{_format_float(conclusion['nnq_state0_guard_gap_vs_amq'])}."
+                ),
+            ]
+        )
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -132,8 +164,7 @@ def _per_seed_costs(summary: dict[str, Any]) -> list[dict[str, float | int]]:
         item: dict[str, float | int] = {"seed": int(row["seed"])}
         for method_row in row["method_rows"]:
             method = method_row["method"]
-            if method in METHODS:
-                item[method] = float(method_row["average_cost_mean"])
+            item[method] = float(method_row["average_cost_mean"])
         rows.append(item)
     return rows
 
@@ -144,6 +175,15 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _format_float(value: float) -> str:
     return f"{value:.6f}"
+
+
+def _ordered_methods(aggregate: dict[str, Any]) -> tuple[str, ...]:
+    methods = []
+    for method in REQUIRED_METHODS:
+        if method in aggregate:
+            methods.append(method)
+    methods.extend(method for method in aggregate if method not in methods)
+    return tuple(methods)
 
 
 if __name__ == "__main__":

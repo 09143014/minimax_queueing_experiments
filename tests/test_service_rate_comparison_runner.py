@@ -26,10 +26,14 @@ class ServiceRateComparisonRunnerTests(unittest.TestCase):
         self.assertIn("method_summary: method=bvi", completed.stdout)
         self.assertIn("method_summary: method=amq", completed.stdout)
         self.assertIn("method_summary: method=nnq", completed.stdout)
+        self.assertIn("method_summary: method=nnq_state0_guard", completed.stdout)
         run_dir = _run_dir_from_stdout(completed.stdout)
         self.assertTrue((run_dir / "comparison.jsonl").exists())
         summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
-        self.assertEqual(summary["methods"], ["bvi", "amq", "nnq"])
+        self.assertEqual(
+            summary["methods"],
+            ["bvi", "amq", "nnq", "nnq_state0_guard"],
+        )
 
 
 def _run_dir_from_stdout(stdout: str) -> Path:

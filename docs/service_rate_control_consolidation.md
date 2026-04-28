@@ -96,3 +96,22 @@ The 3-seed repair diagnostic shows that changing only the rollout policy at
 `0.517298` to `0.392079`. Broader low-state overrides are worse, so the useful
 signal is narrow: empty-state over-service is real, but broad benchmark-specific
 policy overrides should not be folded into raw NNQ.
+
+Unified comparison update:
+
+`results/service_rate_control_multiseed_debug_comparison/20260428T124024Z/summary.json`
+
+The service-rate comparison runner now includes a fourth method,
+`nnq_state0_guard`, which trains the same NNQ baseline but evaluates it with the
+documented `state == 0 -> low service` guard. In the 3-seed debug comparison,
+mean costs are:
+
+- BVI: `0.317933`
+- AMQ: `0.363171`
+- NNQ: `0.517298`
+- NNQ+state0 guard: `0.392079`
+
+This confirms the repair closes much of the NNQ gap while preserving the main
+ranking by mean cost: BVI, AMQ, guarded NNQ, raw NNQ. The guard has high
+per-seed variability and should remain a diagnostic/corrected baseline rather
+than the raw NNQ baseline.

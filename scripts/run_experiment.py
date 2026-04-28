@@ -322,15 +322,34 @@ def main() -> int:
         trainer.network = result.network.copy()
         trainer.target_network = result.network.copy()
         write_jsonl(run_dir / "metrics.jsonl", result.metrics)
+        defender_policy = make_nnq_defender_policy(trainer)
+        policy_guard = config.get("nnq_policy_guard", {})
+        if policy_guard:
+            defender_policy = _guarded_service_rate_nnq_policy(
+                defender_policy,
+                max_state=int(policy_guard["max_state"]),
+                defender_action=int(policy_guard["defender_action"]),
+            )
         evaluation = evaluate_policy(
             env,
-            defender_policy=make_nnq_defender_policy(trainer),
+            defender_policy=defender_policy,
             attacker_policy=random_attacker_policy,
             config=evaluation_config,
         )
         write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
         if env_name == "service_rate_control":
-            policy_rows, policy_summary = nnq_policy_grid(env, trainer, policy_grid_config)
+            policy_rows, policy_summary = nnq_policy_grid(
+                env,
+                trainer,
+                policy_grid_config,
+            )
+            if policy_guard:
+                policy_rows, policy_summary = _apply_service_rate_policy_guard_to_grid(
+                    policy_rows,
+                    policy_grid_config,
+                    max_state=int(policy_guard["max_state"]),
+                    defender_action=int(policy_guard["defender_action"]),
+                )
             write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
             policy_summary_key = "policy_grid"
         elif env_name == "routing":
@@ -398,6 +417,7 @@ def main() -> int:
                 nnq_config.forced_defender_action_probability
             ),
             "forced_defender_action": nnq_config.forced_defender_action,
+            "nnq_policy_guard": policy_guard or None,
             "total_steps": nnq_config.total_steps,
             "seed": nnq_config.seed,
             "final_state": _json_state(result.final_state),
@@ -481,6 +501,60 @@ def _json_state(state):
     if isinstance(state, tuple):
         return [int(value) for value in state]
     return int(state)
+
+
+def _guarded_service_rate_nnq_policy(base_policy, max_state: int, defender_action: int):
+    if max_state < 0:
+        raise ValueError("nnq_policy_guard.max_state must be nonnegative")
+
+    def policy(state, rng, env):
+        if not isinstance(env, ServiceRateControlEnv):
+            raise ValueError("nnq_policy_guard is supported only for service_rate_control")
+        if int(state) <= max_state:
+            if defender_action not in env.defender_actions(state):
+                raise ValueError("nnq_policy_guard.defender_action is invalid")
+            return defender_action
+        return base_policy(state, rng, env)
+
+    return policy
+
+
+def _apply_service_rate_policy_guard_to_grid(
+    rows,
+    policy_grid_config,
+    max_state: int,
+    defender_action: int,
+):
+    guarded_rows = []
+    for row in rows:
+        guarded = dict(row)
+        if int(guarded["state"]) <= max_state:
+            guarded["p_low"] = 1.0 if defender_action == 0 else 0.0
+            guarded["p_medium"] = 1.0 if defender_action == 1 else 0.0
+            guarded["p_high"] = 1.0 if defender_action == 2 else 0.0
+        guarded_rows.append(guarded)
+    return guarded_rows, _service_rate_policy_grid_summary(
+        guarded_rows,
+        policy_grid_config.high_probability_threshold,
+        policy_grid_config.max_state,
+    )
+
+
+def _service_rate_policy_grid_summary(rows, threshold: float, max_state: int):
+    first_high = None
+    first_medium = None
+    for row in rows:
+        state = int(row["state"])
+        if first_high is None and float(row["p_high"]) >= threshold:
+            first_high = state
+        if first_medium is None and float(row["p_medium"]) >= threshold:
+            first_medium = state
+    return {
+        "policy_grid_max_state": max_state,
+        "high_probability_threshold": threshold,
+        "first_state_p_high_at_least_threshold": first_high,
+        "first_state_p_medium_at_least_threshold": first_medium,
+    }
 
 
 def _git_commit() -> str:
