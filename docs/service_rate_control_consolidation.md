@@ -115,3 +115,19 @@ This confirms the repair closes much of the NNQ gap while preserving the main
 ranking by mean cost: BVI, AMQ, guarded NNQ, raw NNQ. The guard has high
 per-seed variability and should remain a diagnostic/corrected baseline rather
 than the raw NNQ baseline.
+
+Evaluation robustness:
+
+`docs/service_rate_eval_robustness.md`
+
+An eval50 robustness run keeps the same mean-cost ranking as eval10:
+
+- BVI: `0.242748`
+- AMQ: `0.293975`
+- NNQ+state0 guard: `0.317562`
+- NNQ: `0.460424`
+
+Best-count remains BVI `1`, guarded NNQ `2`, but guarded NNQ still has high
+cross-seed variance and remains worse than AMQ by mean cost. This supports the
+current debug-stage narrative without promoting the guard to the main NNQ
+baseline.

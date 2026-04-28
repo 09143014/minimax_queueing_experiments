@@ -1,0 +1,6 @@
+experiment:
+  name: service_rate_control_multiseed_eval50_debug_comparison
+  output_dir: results
+
+base_config: configs/service_rate_comparison_eval50_debug.yaml
+seeds: [0, 1, 2]

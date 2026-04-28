@@ -1,0 +1,45 @@
+experiment:
+  name: service_rate_control_nnq_state0_guard_eval50_debug
+  output_dir: results
+
+env:
+  name: service_rate_control
+  gamma: 0.95
+  lambda_arrival: 2.0
+  mu_levels: [1.0, 3.0, 5.0]
+  service_costs: [0.0, 0.5, 2.0]
+  attack_cost: 0.5
+  q_congestion: 1.0
+  initial_state: 0
+  uniformization_rate: 7.0
+  robust_defender_actions: [2]
+
+algorithm:
+  name: nnq
+
+nnq:
+  hidden_size: 32
+  learning_rate: 0.001
+  total_steps: 3000
+  batch_size: 32
+  replay_capacity: 5000
+  target_update_interval: 250
+  epsilon: 0.2
+  seed: 0
+  log_interval: 300
+  state_scale: 10.0
+
+nnq_policy_guard:
+  max_state: 0
+  defender_action: 0
+
+evaluation:
+  num_episodes: 50
+  horizon: 50
+  seed: 200
+  tail_threshold: 8
+  boundary_state: 20
+
+policy_grid:
+  max_state: 20
+  high_probability_threshold: 0.5

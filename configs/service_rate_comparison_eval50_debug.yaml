@@ -1,0 +1,13 @@
+experiment:
+  name: service_rate_control_eval50_debug_comparison
+  output_dir: results
+
+runs:
+  - method: bvi
+    config: configs/bvi_eval50_debug.yaml
+  - method: amq
+    config: configs/amq_eval50_debug.yaml
+  - method: nnq
+    config: configs/nnq_eval50_debug.yaml
+  - method: nnq_state0_guard
+    config: configs/nnq_state0_guard_eval50_debug.yaml
