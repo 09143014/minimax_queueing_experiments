@@ -77,3 +77,12 @@ This is a consolidation result, not a final publishable service-rate-control
 benchmark result. The next service-rate step should inspect whether NNQ needs a
 stronger configuration, policy calibration, or a different budget. Do not change
 the service-rate-control environment dynamics based on this diagnostic.
+
+Follow-up minimal NNQ experiments are recorded in:
+
+`docs/service_rate_nnq_minimal_experiments.md`
+
+Summary of that follow-up: forced low/medium behavior, uniform exploration,
+state-scale adjustment, longer training, and lower learning rate all failed to
+fix state 0 high-service overuse. This makes blind NNQ config tuning a poor next
+step.
