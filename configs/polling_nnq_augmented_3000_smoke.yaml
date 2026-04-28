@@ -1,0 +1,43 @@
+experiment:
+  name: polling_nnq_augmented_3000_smoke
+  output_dir: results
+
+env:
+  name: polling
+  lambda_arrivals: [1.0, 1.5]
+  mu_service: 2.0
+  gamma: 0.95
+  attack_cost: 0.5
+  defend_cost: 0.2
+  switch_cost: 0.3
+  queue_cost: sum
+  initial_queues: [0, 0]
+  initial_position: 0
+  uniformization_rate: 5.0
+
+algorithm:
+  name: nnq
+
+nnq:
+  hidden_size: 32
+  learning_rate: 0.001
+  total_steps: 3000
+  batch_size: 32
+  replay_capacity: 5000
+  target_update_interval: 250
+  epsilon: 0.3
+  seed: 0
+  log_interval: 300
+  state_scale: 10.0
+  state_feature_set: polling_augmented
+
+evaluation:
+  num_episodes: 3
+  horizon: 20
+  seed: 400
+  tail_threshold: 8
+  boundary_state: 10
+
+policy_grid:
+  max_state: 3
+  high_probability_threshold: 0.5

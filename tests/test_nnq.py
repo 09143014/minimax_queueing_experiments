@@ -11,6 +11,7 @@ from adversarial_queueing.envs.service_rate_control import (
     ServiceRateControlConfig,
     ServiceRateControlEnv,
 )
+from adversarial_queueing.envs.polling import PollingConfig, PollingEnv
 from adversarial_queueing.envs.routing import RoutingConfig, RoutingEnv
 
 
@@ -79,6 +80,31 @@ class NNQTests(unittest.TestCase):
         _attacker_action, defender_action = trainer._behavior_actions(0)
 
         self.assertEqual(defender_action, 2)
+
+    def test_polling_augmented_state_features(self):
+        env = PollingEnv(
+            PollingConfig(
+                lambda_arrivals=(1.0, 1.5),
+                mu_service=2.0,
+                uniformization_rate=5.0,
+            )
+        )
+        trainer = NNQTrainer(
+            env,
+            NNQConfig(
+                total_steps=1,
+                batch_size=1,
+                hidden_size=4,
+                seed=7,
+                state_feature_set="polling_augmented",
+            ),
+        )
+
+        encoded = trainer._encode_state((0, 2, 1))
+
+        self.assertEqual(encoded.shape[0], 13)
+        self.assertEqual(encoded[0], 0.0)
+        self.assertEqual(encoded[1], 2.0)
 
 
 if __name__ == "__main__":

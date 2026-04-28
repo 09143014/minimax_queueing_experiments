@@ -147,6 +147,13 @@ def _interpret(aggregate: dict[str, dict[str, Any]]) -> str:
             "NNQ always defends. The smoke cost ranking should not be used as a "
             "performance claim until AMQ/NNQ policy shapes are calibrated."
         )
+    if bvi == "state_dependent" and amq == "always_defend" and nnq == "state_dependent":
+        return (
+            "The polling NNQ policy shape has been partially calibrated: NNQ is "
+            "state-dependent, while AMQ over-defends in every inspected state. "
+            "The comparison is still smoke-level because NNQ over-defends some "
+            "zero-gap states and AMQ remains degenerate."
+        )
     return (
         "The polling policy-shape diagnostic does not match the expected BVI "
         "state-dependent / AMQ-NNQ degenerate pattern. Inspect the method rows "

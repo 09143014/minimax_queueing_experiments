@@ -9,6 +9,7 @@ import numpy as np
 
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
 from adversarial_queueing.envs.base import BaseAdversarialQueueEnv
+from adversarial_queueing.envs.polling import PollingEnv
 from adversarial_queueing.envs.routing import RoutingEnv
 
 
@@ -321,6 +322,32 @@ class NNQTrainer:
                     max_value - min_value,
                     *(1.0 if value == min_value else 0.0 for value in x),
                     *(1.0 if value == max_value else 0.0 for value in x),
+                ],
+                dtype=float,
+            )
+        if self.config.state_feature_set == "polling_augmented":
+            if not isinstance(self.env, PollingEnv):
+                raise ValueError("polling_augmented state features require PollingEnv")
+            values = tuple(float(value) for value in self.env.encode_state(state))
+            queues = values[:-1]
+            position = int(values[-1])
+            min_value = min(queues)
+            max_value = max(queues)
+            position_one_hot = [
+                1.0 if index == position else 0.0
+                for index in range(self.env.config.num_queues)
+            ]
+            return np.asarray(
+                [
+                    *queues,
+                    *position_one_hot,
+                    sum(queues),
+                    min_value,
+                    max_value,
+                    max_value - min_value,
+                    queues[position],
+                    *(1.0 if value == min_value else 0.0 for value in queues),
+                    *(1.0 if value == max_value else 0.0 for value in queues),
                 ],
                 dtype=float,
             )

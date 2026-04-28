@@ -1,0 +1,39 @@
+experiment:
+  name: polling_amq_basic_500_smoke
+  output_dir: results
+
+env:
+  name: polling
+  lambda_arrivals: [1.0, 1.5]
+  mu_service: 2.0
+  gamma: 0.95
+  attack_cost: 0.5
+  defend_cost: 0.2
+  switch_cost: 0.3
+  queue_cost: sum
+  initial_queues: [0, 0]
+  initial_position: 0
+  uniformization_rate: 5.0
+
+algorithm:
+  name: amq
+
+amq:
+  feature_set: basic
+  learning_rate_schedule: constant
+  eta0: 0.001
+  total_steps: 500
+  seed: 0
+  log_interval: 50
+  weight_clip: 100.0
+
+evaluation:
+  num_episodes: 3
+  horizon: 20
+  seed: 400
+  tail_threshold: 8
+  boundary_state: 10
+
+policy_grid:
+  max_state: 3
+  high_probability_threshold: 0.5

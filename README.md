@@ -46,6 +46,8 @@ python scripts/run_experiment.py --config configs/polling_amq_smoke.yaml
 python scripts/run_experiment.py --config configs/polling_nnq_smoke.yaml
 python scripts/run_polling_comparison.py --config configs/polling_comparison_smoke.yaml
 python scripts/diagnose_polling_policy_shape.py --summary results/polling_smoke_comparison/20260428T144648Z/summary.json --json-output results/polling_policy_shape_diagnostic.json --markdown-output results/polling_policy_shape_diagnostic.md
+python scripts/run_polling_comparison.py --config configs/polling_augmented_comparison_smoke.yaml
+python scripts/diagnose_polling_policy_shape.py --summary results/polling_augmented_smoke_comparison/20260428T155107Z/summary.json --json-output results/polling_augmented_policy_shape_diagnostic.json --markdown-output results/polling_augmented_policy_shape_diagnostic.md
 python scripts/run_service_rate_comparison.py --config configs/service_rate_comparison.yaml
 python scripts/run_service_rate_comparison_multiseed.py --config configs/service_rate_comparison_multiseed.yaml
 python -m unittest discover -s tests

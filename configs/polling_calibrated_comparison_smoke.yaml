@@ -1,0 +1,11 @@
+experiment:
+  name: polling_calibrated_smoke_comparison
+  output_dir: results
+
+runs:
+  - method: bvi
+    config: configs/polling_smoke.yaml
+  - method: amq
+    config: configs/polling_amq_calibrated_smoke.yaml
+  - method: nnq
+    config: configs/polling_nnq_calibrated_smoke.yaml
