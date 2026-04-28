@@ -17,9 +17,12 @@ report artifact.
   - `configs/service_rate_comparison_multiseed.yaml`
 - Added report builder:
   - `scripts/build_service_rate_report.py`
+- Added policy-shape diagnostic:
+  - `scripts/diagnose_service_rate_policy_shape.py`
 - Added tests:
   - `tests/test_service_rate_comparison_multiseed_runner.py`
   - `tests/test_service_rate_report.py`
+  - `tests/test_service_rate_policy_shape_diagnostic.py`
 - Updated README Quick Start with service-rate multiseed and report commands.
 
 ## Commands Run
@@ -27,8 +30,9 @@ report artifact.
 ```bash
 rtk python scripts/run_service_rate_comparison_multiseed.py --config configs/service_rate_comparison_multiseed.yaml
 rtk python scripts/build_service_rate_report.py --summary results/service_rate_control_multiseed_debug_comparison/20260428T093705Z/summary.json --json-output results/service_rate_control_report.json --markdown-output results/service_rate_control_report.md
-rtk python -m py_compile scripts/run_service_rate_comparison.py scripts/run_service_rate_comparison_multiseed.py scripts/build_service_rate_report.py src/adversarial_queueing/envs/service_rate_control.py src/adversarial_queueing/features/service_rate_features.py
-rtk python -m unittest tests/test_service_rate_control.py tests/test_service_rate_features.py tests/test_service_rate_comparison_runner.py tests/test_service_rate_comparison_multiseed_runner.py tests/test_service_rate_report.py tests/test_policy_grid.py
+rtk python scripts/diagnose_service_rate_policy_shape.py --summary results/service_rate_control_multiseed_debug_comparison/20260428T093705Z/summary.json --json-output results/service_rate_policy_shape_diagnostic.json --markdown-output results/service_rate_policy_shape_diagnostic.md
+rtk python -m py_compile scripts/run_service_rate_comparison.py scripts/run_service_rate_comparison_multiseed.py scripts/build_service_rate_report.py scripts/diagnose_service_rate_policy_shape.py src/adversarial_queueing/envs/service_rate_control.py src/adversarial_queueing/features/service_rate_features.py
+rtk python -m unittest tests/test_service_rate_control.py tests/test_service_rate_features.py tests/test_service_rate_comparison_runner.py tests/test_service_rate_comparison_multiseed_runner.py tests/test_service_rate_report.py tests/test_service_rate_policy_shape_diagnostic.py tests/test_policy_grid.py
 ```
 
 All checks passed.
@@ -56,13 +60,20 @@ Report files:
 - `results/service_rate_control_report.json`
 - `results/service_rate_control_report.md`
 
+Policy-shape diagnostic files:
+
+- `results/service_rate_policy_shape_diagnostic.json`
+- `results/service_rate_policy_shape_diagnostic.md`
+
 ## Current Interpretation
 
 BVI is strongest on the current service-rate-control debug comparison. AMQ is
-consistently better than NNQ, but remains behind BVI. NNQ does not yet show the
-high-service threshold behavior seen in BVI and AMQ.
+consistently better than NNQ, but remains behind BVI. NNQ's weak result appears
+to be an empty-state over-service problem: on all three seeds, NNQ assigns high
+service probability at state 0, while BVI uses low service and AMQ uses medium
+service at state 0.
 
 This is a consolidation result, not a final publishable service-rate-control
 benchmark result. The next service-rate step should inspect whether NNQ needs a
-stronger configuration or whether the current debug budget is intentionally too
-small.
+stronger configuration, policy calibration, or a different budget. Do not change
+the service-rate-control environment dynamics based on this diagnostic.

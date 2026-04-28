@@ -65,11 +65,13 @@ For the current service-rate-control result, rebuild the report from the latest
 
 ```bash
 python scripts/build_service_rate_report.py --summary results/service_rate_control_multiseed_debug_comparison/20260428T093705Z/summary.json --json-output results/service_rate_control_report.json --markdown-output results/service_rate_control_report.md
+python scripts/diagnose_service_rate_policy_shape.py --summary results/service_rate_control_multiseed_debug_comparison/20260428T093705Z/summary.json --json-output results/service_rate_policy_shape_diagnostic.json --markdown-output results/service_rate_policy_shape_diagnostic.md
 ```
 
 The current service-rate-control conclusion is also narrow: BVI is strongest on
-the debug comparison, AMQ is consistently better than NNQ, and NNQ does not yet
-show the high-service threshold behavior seen in BVI and AMQ.
+the debug comparison, AMQ is consistently better than NNQ, and NNQ's weak result
+appears to come from empty-state over-service rather than a benchmark dynamics
+issue.
 
 If `pytest` is installed, the tests are also pytest-compatible:
 
