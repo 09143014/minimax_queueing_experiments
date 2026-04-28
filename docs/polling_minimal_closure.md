@@ -92,18 +92,29 @@ Therefore the NNQ smoke cost should not be read as a meaningful polling
 performance result. The next polling step should inspect and calibrate these
 policy shapes before increasing budgets.
 
+Diagnostic report artifacts:
+
+- `results/polling_policy_shape_diagnostic.json`
+- `results/polling_policy_shape_diagnostic.md`
+
+Rebuild command:
+
+```bash
+rtk python scripts/diagnose_polling_policy_shape.py --summary results/polling_smoke_comparison/20260428T144648Z/summary.json --json-output results/polling_policy_shape_diagnostic.json --markdown-output results/polling_policy_shape_diagnostic.md
+```
+
 ## Verification
 
 ```bash
 rtk python -m py_compile src/adversarial_queueing/envs/polling.py src/adversarial_queueing/features/polling_features.py src/adversarial_queueing/algorithms/amq.py src/adversarial_queueing/utils/config.py src/adversarial_queueing/evaluation/rollout.py scripts/run_experiment.py scripts/run_polling_comparison.py
-rtk python -m unittest tests/test_polling.py tests/test_polling_features.py tests/test_polling_policy_inspection.py tests/test_polling_comparison_runner.py tests/test_rollout_evaluation.py tests/test_amq.py tests/test_nnq.py
+rtk python -m py_compile scripts/diagnose_polling_policy_shape.py
+rtk python -m unittest tests/test_polling.py tests/test_polling_features.py tests/test_polling_policy_inspection.py tests/test_polling_policy_shape_diagnostic.py tests/test_polling_comparison_runner.py tests/test_rollout_evaluation.py tests/test_amq.py tests/test_nnq.py
 ```
 
 ## Next Steps
 
 The next polling work should stay minimal:
 
-1. Add a small polling policy-shape diagnostic report builder.
-2. Calibrate AMQ/NNQ smoke settings enough to avoid always-defend /
+1. Calibrate AMQ/NNQ smoke settings enough to avoid always-defend /
    never-defend degeneracy.
-3. Only then add a 3-seed polling debug comparison.
+2. Only then add a 3-seed polling debug comparison.
