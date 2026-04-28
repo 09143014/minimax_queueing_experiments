@@ -1,0 +1,32 @@
+experiment:
+  name: polling_bvi_smoke
+  output_dir: results
+
+env:
+  name: polling
+  lambda_arrivals: [1.0, 1.5]
+  mu_service: 2.0
+  gamma: 0.95
+  attack_cost: 0.5
+  defend_cost: 0.2
+  switch_cost: 0.3
+  queue_cost: sum
+  initial_queues: [0, 0]
+  initial_position: 0
+  uniformization_rate: 5.0
+
+algorithm:
+  name: bvi
+
+bvi:
+  max_queue_length: 3
+  tolerance: 0.000001
+  max_iterations: 1000
+  boundary_mode: clip
+
+evaluation:
+  num_episodes: 3
+  horizon: 20
+  seed: 400
+  tail_threshold: 8
+  boundary_state: 10

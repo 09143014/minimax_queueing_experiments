@@ -9,8 +9,10 @@ import numpy as np
 
 from adversarial_queueing.algorithms.minimax_solver import solve_zero_sum_matrix_game
 from adversarial_queueing.envs.base import BaseAdversarialQueueEnv
+from adversarial_queueing.envs.polling import PollingEnv
 from adversarial_queueing.envs.routing import RoutingEnv
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
+from adversarial_queueing.features.polling_features import polling_feature_dim, polling_features
 from adversarial_queueing.features.routing_features import routing_feature_dim, routing_features
 from adversarial_queueing.features.service_rate_features import (
     service_rate_feature_dim,
@@ -130,6 +132,15 @@ class LinearAMQTrainer:
                 defender_action=defender_action,
                 feature_set=self.config.feature_set,
             )
+        if isinstance(self.env, PollingEnv):
+            if not isinstance(state, tuple):
+                raise ValueError("polling AMQ requires tuple states")
+            return polling_features(
+                state=state,
+                attacker_action=attacker_action,
+                defender_action=defender_action,
+                feature_set=self.config.feature_set,
+            )
         raise ValueError(f"unsupported AMQ environment: {type(self.env).__name__}")
 
     def _feature_dim(self) -> int:
@@ -144,12 +155,19 @@ class LinearAMQTrainer:
                 num_queues=self.env.config.num_queues,
                 feature_set=self.config.feature_set,
             )
+        if isinstance(self.env, PollingEnv):
+            return polling_feature_dim(
+                num_queues=self.env.config.num_queues,
+                feature_set=self.config.feature_set,
+            )
         raise ValueError(f"unsupported AMQ environment: {type(self.env).__name__}")
 
     def _initial_state(self) -> Hashable:
         if isinstance(self.env, ServiceRateControlEnv):
             return self.env.config.initial_state
         if isinstance(self.env, RoutingEnv):
+            return self.env.config.initial_state_value
+        if isinstance(self.env, PollingEnv):
             return self.env.config.initial_state_value
         return self.env.reset(seed=self.config.seed)
 

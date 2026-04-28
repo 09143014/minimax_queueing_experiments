@@ -15,7 +15,9 @@ The first runnable baseline implements:
 - a linear AMQ smoke path for service-rate-control;
 - a NumPy MLP NNQ smoke path for service-rate-control;
 - an initial parallel-queue routing benchmark environment and feature map;
+- an initial polling benchmark environment and feature map;
 - BVI and linear AMQ smoke paths for routing;
+- BVI, linear AMQ, and NNQ smoke paths for polling;
 - routing comparison runners for BVI / AMQ / NNQ, including multi-seed aggregation;
 - normalized routing AMQ feature experiments for calibration;
 - shared rollout evaluation for BVI and AMQ smoke runs across implemented benchmarks;
@@ -24,7 +26,7 @@ The first runnable baseline implements:
 - BVI truncation sensitivity checks for service-rate-control;
 - tests for the minimax solver and service-rate-control dynamics.
 
-Polling and broader multi-benchmark experiment runners will be added in focused follow-up changes.
+Broader multi-benchmark experiment runners will be added in focused follow-up changes.
 
 ## Quick Start
 
@@ -39,6 +41,10 @@ python scripts/run_routing_amq_multiseed.py --config configs/routing_amq_multise
 python scripts/run_routing_comparison.py --config configs/routing_comparison_debug.yaml
 python scripts/run_routing_comparison_multiseed.py --config configs/routing_comparison_multiseed_debug.yaml
 python scripts/run_routing_comparison_multiseed.py --config configs/routing_comparison_normalized_amq_multiseed_eval50_debug.yaml
+python scripts/run_experiment.py --config configs/polling_smoke.yaml
+python scripts/run_experiment.py --config configs/polling_amq_smoke.yaml
+python scripts/run_experiment.py --config configs/polling_nnq_smoke.yaml
+python scripts/run_polling_comparison.py --config configs/polling_comparison_smoke.yaml
 python scripts/run_service_rate_comparison.py --config configs/service_rate_comparison.yaml
 python scripts/run_service_rate_comparison_multiseed.py --config configs/service_rate_comparison_multiseed.yaml
 python -m unittest discover -s tests

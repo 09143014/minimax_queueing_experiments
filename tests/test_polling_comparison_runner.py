@@ -1,0 +1,44 @@
+import json
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+
+class PollingComparisonRunnerTests(unittest.TestCase):
+    def test_polling_comparison_smoke(self):
+        root = Path(__file__).resolve().parents[1]
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(root / "scripts" / "run_polling_comparison.py"),
+                "--config",
+                str(root / "configs" / "polling_comparison_smoke.yaml"),
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("method_summary: method=bvi", completed.stdout)
+        self.assertIn("method_summary: method=amq", completed.stdout)
+        self.assertIn("method_summary: method=nnq", completed.stdout)
+        run_dir = _run_dir_from_stdout(completed.stdout)
+        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["benchmark"], "polling")
+        self.assertEqual(summary["methods"], ["bvi", "amq", "nnq"])
+        self.assertTrue((run_dir / "comparison.jsonl").exists())
+
+
+def _run_dir_from_stdout(stdout: str) -> Path:
+    for line in stdout.splitlines():
+        if line.startswith("wrote "):
+            return Path(line.removeprefix("wrote ").strip())
+    raise AssertionError(f"comparison output did not include run directory: {stdout}")
+
+
+if __name__ == "__main__":
+    unittest.main()

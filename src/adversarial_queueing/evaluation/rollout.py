@@ -56,7 +56,7 @@ def evaluate_policy(
             next_state, cost, _info = env.step(attacker_action, defender_action)
             total_cost += float(cost)
             discounted_cost += (env.discount**step) * float(cost)
-            next_load = _state_load(next_state)
+            next_load = _state_load(next_state, env)
             tail_count += int(next_load >= config.tail_threshold)
             if config.boundary_state is not None:
                 boundary_hits += int(next_load >= config.boundary_state)
@@ -70,7 +70,7 @@ def evaluate_policy(
                 "average_cost": total_cost / config.horizon,
                 "discounted_cost": discounted_cost,
                 "final_state": state,
-                "final_load": _state_load(state),
+                "final_load": _state_load(state, env),
                 "tail_fraction": tail_count / config.horizon,
                 "boundary_hit_fraction": boundary_hits / config.horizon,
             }
@@ -241,7 +241,9 @@ def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, float]:
     }
 
 
-def _state_load(state: Hashable) -> int:
+def _state_load(state: Hashable, env: BaseAdversarialQueueEnv | None = None) -> int:
+    if env is not None and hasattr(env, "queue_load"):
+        return int(env.queue_load(state))
     if isinstance(state, tuple):
         return int(sum(int(value) for value in state))
     return int(state)

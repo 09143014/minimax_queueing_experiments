@@ -22,6 +22,7 @@ from adversarial_queueing.algorithms.bvi import (
     run_bounded_value_iteration,
 )
 from adversarial_queueing.algorithms.nnq import NNQTrainer
+from adversarial_queueing.envs.polling import PollingEnv
 from adversarial_queueing.envs.routing import RoutingEnv
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
 from adversarial_queueing.evaluation.rollout import (
@@ -55,6 +56,7 @@ from adversarial_queueing.utils.config import (
     build_bvi_sensitivity_config,
     build_evaluation_config,
     build_nnq_config,
+    build_polling_config,
     build_policy_grid_config,
     build_routing_config,
     build_service_rate_config,
@@ -77,6 +79,9 @@ def main() -> int:
     elif env_name == "routing":
         env_config = build_routing_config(config)
         env = RoutingEnv(env_config)
+    elif env_name == "polling":
+        env_config = build_polling_config(config)
+        env = PollingEnv(env_config)
     else:
         raise ValueError(f"unsupported env.name: {env_name}")
 
@@ -179,17 +184,18 @@ def main() -> int:
             config=evaluation_config,
         )
         write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
-        policy_rows, policy_summary = bvi_policy_grid(env, result, policy_grid_config)
-        write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+        if env_name == "service_rate_control":
+            policy_rows, policy_summary = bvi_policy_grid(env, result, policy_grid_config)
+            write_jsonl(run_dir / "policy_grid.jsonl", policy_rows)
+            summary["policy_grid"] = policy_summary
         summary["evaluation"] = evaluation.summary
-        summary["policy_grid"] = policy_summary
         write_json(run_dir / "summary.json", summary)
         print(f"wrote {run_dir}")
         print(
             "summary: "
             f"iterations={result.iterations} "
             f"residual={result.residual:.6g} "
-            f"V0={result.values[env_config.initial_state]:.6g} "
+            f"V0={summary['value_at_initial_state']:.6g} "
             f"eval_avg_cost={evaluation.summary['average_cost_mean']:.6g}"
         )
         return 0
@@ -285,6 +291,11 @@ def main() -> int:
                     "num_states": len(bvi_reference.values),
                     "role": "bounded_reference_for_evaluation_only",
                 },
+            }
+        elif env_name == "polling":
+            policy_summary_key = "policy_inspection"
+            policy_summary_value = {
+                "role": "not_implemented_for_polling_smoke",
             }
         else:
             raise ValueError(f"AMQ runner does not support env.name: {env_name}")
@@ -405,6 +416,11 @@ def main() -> int:
                 run_dir / "evaluation_bvi_attacker.jsonl",
                 bvi_attacker_evaluation.rows,
             )
+        elif env_name == "polling":
+            policy_summary = {
+                "role": "not_implemented_for_polling_smoke",
+            }
+            policy_summary_key = "policy_inspection"
         else:
             raise ValueError(f"NNQ runner does not support env.name: {env_name}")
         final_loss = result.metrics[-1]["loss"] if result.metrics else 0.0
@@ -486,6 +502,8 @@ def _bvi_states(env_name: str, env_config, max_queue_length: int):
             num_queues=env_config.num_queues,
             max_queue_length=max_queue_length,
         )
+    if env_name == "polling":
+        return _bounded_polling_states(env_config.num_queues, max_queue_length)
     raise ValueError(f"unsupported env.name for BVI: {env_name}")
 
 
@@ -494,6 +512,8 @@ def _initial_state(env_name: str, env_config):
         return env_config.initial_state
     if env_name == "routing":
         return env_config.initial_state_value
+    if env_name == "polling":
+        return env_config.initial_state_value
     raise ValueError(f"unsupported env.name for initial state: {env_name}")
 
 
@@ -501,6 +521,18 @@ def _json_state(state):
     if isinstance(state, tuple):
         return [int(value) for value in state]
     return int(state)
+
+
+def _bounded_polling_states(num_queues: int, max_queue_length: int):
+    queue_states = bounded_queue_states(
+        num_queues=num_queues,
+        max_queue_length=max_queue_length,
+    )
+    return [
+        (*tuple(int(value) for value in queues), position)
+        for queues in queue_states
+        for position in range(num_queues)
+    ]
 
 
 def _guarded_service_rate_nnq_policy(base_policy, max_state: int, defender_action: int):
