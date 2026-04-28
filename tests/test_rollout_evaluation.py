@@ -10,8 +10,10 @@ from adversarial_queueing.envs.service_rate_control import (
 )
 from adversarial_queueing.evaluation.rollout import (
     EvaluationConfig,
+    always_attacker_policy,
     evaluate_policy,
     random_attacker_policy,
+    rollout_state_visitation,
 )
 
 
@@ -49,7 +51,25 @@ class RolloutEvaluationTests(unittest.TestCase):
         self.assertIn("discounted_cost_mean", first.summary)
         self.assertIn("boundary_hit_fraction_mean", first.summary)
 
+    def test_always_attacker_policy_uses_attack_action(self):
+        env = self.make_env()
+        state = env.reset(seed=0)
+
+        self.assertEqual(always_attacker_policy(state, None, env), 1)
+
+    def test_state_visitation_counts_each_step(self):
+        config = EvaluationConfig(num_episodes=2, horizon=5, seed=50)
+
+        rows = rollout_state_visitation(
+            self.make_env(),
+            defender_policy=lambda state, rng, env: 2,
+            attacker_policy=random_attacker_policy,
+            config=config,
+        )
+
+        self.assertEqual(sum(row["visit_count"] for row in rows), 10)
+        self.assertIn("visit_fraction", rows[0])
+
 
 if __name__ == "__main__":
     unittest.main()
-

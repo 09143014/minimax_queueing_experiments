@@ -30,6 +30,9 @@ class AMQConfig:
     weight_clip: float | None = None
     exploring_starts_probability: float = 0.0
     exploring_starts_max_queue_length: int | None = None
+    fitted_calibration_passes: int = 0
+    fitted_calibration_max_queue_length: int | None = None
+    fitted_calibration_eta: float | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,8 @@ class LinearAMQTrainer:
                     }
                 )
             state = next_state
+
+        self._fitted_calibration(metrics)
 
         return AMQResult(weights=self.weights.copy(), metrics=metrics, final_state=state)
 
@@ -176,8 +181,91 @@ class LinearAMQTrainer:
             return self.env.set_state(sampled)
         raise ValueError("exploring starts are currently implemented only for routing AMQ")
 
+    def _fitted_calibration(self, metrics: list[dict[str, Any]]) -> None:
+        passes = int(self.config.fitted_calibration_passes)
+        if passes <= 0:
+            return
+        if not isinstance(self.env, RoutingEnv):
+            raise ValueError("fitted calibration is currently implemented only for routing AMQ")
+        if self.config.fitted_calibration_max_queue_length is None:
+            raise ValueError("fitted_calibration_max_queue_length is required")
+        eta = (
+            float(self.config.fitted_calibration_eta)
+            if self.config.fitted_calibration_eta is not None
+            else float(self.config.eta0)
+        )
+        if eta <= 0.0:
+            raise ValueError("fitted_calibration_eta must be positive")
+
+        bound = int(self.config.fitted_calibration_max_queue_length)
+        states = _bounded_routing_states(self.env.config.num_queues, bound)
+        updates = 0
+        abs_td_error_sum = 0.0
+        last_td_error = 0.0
+        for _calibration_pass in range(passes):
+            for state in states:
+                for attacker_action in self.attacker_actions:
+                    for defender_action in self.defender_actions:
+                        phi = self._features(state, attacker_action, defender_action)
+                        current_q = float(phi @ self.weights)
+                        target = self._expected_bellman_target(
+                            state,
+                            attacker_action,
+                            defender_action,
+                        )
+                        td_error = float(target - current_q)
+                        self.weights = self.weights + eta * phi * td_error
+                        if self.config.weight_clip is not None:
+                            clip = float(self.config.weight_clip)
+                            self.weights = np.clip(self.weights, -clip, clip)
+                        updates += 1
+                        abs_td_error_sum += abs(td_error)
+                        last_td_error = td_error
+        metrics.append(
+            {
+                "step": self.config.total_steps,
+                "phase": "fitted_calibration",
+                "passes": passes,
+                "num_updates": updates,
+                "td_error": last_td_error,
+                "mean_abs_td_error": abs_td_error_sum / updates if updates else 0.0,
+                "weight_norm": float(np.linalg.norm(self.weights)),
+            }
+        )
+
+    def _expected_bellman_target(
+        self,
+        state: Hashable,
+        attacker_action: int,
+        defender_action: int,
+    ) -> float:
+        expected_next = 0.0
+        for next_state, probability in self.env.transition_probabilities(
+            state,
+            attacker_action,
+            defender_action,
+        ).items():
+            expected_next += probability * self.value(next_state)
+        return float(
+            self.env.cost(state, attacker_action, defender_action)
+            + self.env.discount * expected_next
+        )
+
 
 def _json_state(state: Hashable) -> int | list[int]:
     if isinstance(state, tuple):
         return [int(value) for value in state]
     return int(state)
+
+
+def _bounded_routing_states(num_queues: int, max_queue_length: int) -> tuple[tuple[int, ...], ...]:
+    if max_queue_length < 0:
+        raise ValueError("max_queue_length must be nonnegative")
+    states = [()]
+    for _ in range(num_queues):
+        states = [
+            (*prefix, value)
+            for prefix in states
+            for value in range(max_queue_length + 1)
+        ]
+    return tuple(states)

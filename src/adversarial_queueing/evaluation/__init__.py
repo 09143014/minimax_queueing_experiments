@@ -7,11 +7,16 @@ from adversarial_queueing.evaluation.bvi_sensitivity import (
 from adversarial_queueing.evaluation.rollout import (
     EvaluationConfig,
     RolloutResult,
+    always_attacker_policy,
     evaluate_policy,
+    make_amq_attacker_policy,
     make_amq_defender_policy,
+    make_bvi_attacker_policy,
     make_bvi_defender_policy,
+    make_nnq_attacker_policy,
     make_nnq_defender_policy,
     random_attacker_policy,
+    rollout_state_visitation,
 )
 from adversarial_queueing.evaluation.routing_policy import (
     amq_routing_policy_inspection,
@@ -34,6 +39,7 @@ __all__ = [
     "BVISensitivityConfig",
     "PolicyGridConfig",
     "RolloutResult",
+    "always_attacker_policy",
     "amq_policy_grid",
     "amq_routing_policy_inspection",
     "bvi_policy_grid",
@@ -45,9 +51,13 @@ __all__ = [
     "routing_nnq_q_diagnostic",
     "nnq_policy_grid",
     "evaluate_policy",
+    "make_amq_attacker_policy",
     "make_amq_defender_policy",
+    "make_bvi_attacker_policy",
     "make_bvi_defender_policy",
+    "make_nnq_attacker_policy",
     "make_nnq_defender_policy",
     "random_attacker_policy",
+    "rollout_state_visitation",
     "run_bvi_sensitivity",
 ]

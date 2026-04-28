@@ -88,10 +88,51 @@ def evaluate_policy(
     return RolloutResult(rows=rows, summary=summary)
 
 
+def rollout_state_visitation(
+    env: BaseAdversarialQueueEnv,
+    defender_policy: DefenderPolicy,
+    attacker_policy: AttackerPolicy,
+    config: EvaluationConfig,
+) -> list[dict[str, Any]]:
+    """Return per-state visit counts under a policy pair."""
+
+    rng = np.random.default_rng(config.seed)
+    counts: dict[Hashable, int] = {}
+    total_visits = 0
+
+    for episode in range(config.num_episodes):
+        state = env.reset(seed=config.seed + episode)
+        for _step in range(config.horizon):
+            counts[state] = counts.get(state, 0) + 1
+            total_visits += 1
+            attacker_action = int(attacker_policy(state, rng, env))
+            defender_action = int(defender_policy(state, rng, env))
+            state, _cost, _info = env.step(attacker_action, defender_action)
+
+    rows = []
+    for state, count in sorted(counts.items(), key=lambda item: _state_sort_key(item[0])):
+        rows.append(
+            {
+                "state": _json_state(state),
+                "visit_count": int(count),
+                "visit_fraction": float(count / total_visits)
+                if total_visits
+                else 0.0,
+            }
+        )
+    return rows
+
+
 def random_attacker_policy(
     state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
 ) -> int:
     return int(rng.choice(env.attacker_actions(state)))
+
+
+def always_attacker_policy(
+    state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+) -> int:
+    return int(max(env.attacker_actions(state)))
 
 
 def make_amq_defender_policy(trainer: LinearAMQTrainer) -> DefenderPolicy:
@@ -105,6 +146,17 @@ def make_amq_defender_policy(trainer: LinearAMQTrainer) -> DefenderPolicy:
     return policy
 
 
+def make_amq_attacker_policy(trainer: LinearAMQTrainer) -> AttackerPolicy:
+    def policy(
+        state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+    ) -> int:
+        game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        attacker_actions = tuple(env.attacker_actions(state))
+        return int(rng.choice(attacker_actions, p=game["attacker_strategy"]))
+
+    return policy
+
+
 def make_nnq_defender_policy(trainer: NNQTrainer) -> DefenderPolicy:
     def policy(
         state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
@@ -112,6 +164,17 @@ def make_nnq_defender_policy(trainer: NNQTrainer) -> DefenderPolicy:
         game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
         defender_actions = tuple(env.defender_actions(state))
         return int(rng.choice(defender_actions, p=game["defender_strategy"]))
+
+    return policy
+
+
+def make_nnq_attacker_policy(trainer: NNQTrainer) -> AttackerPolicy:
+    def policy(
+        state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+    ) -> int:
+        game = solve_zero_sum_matrix_game(trainer.q_matrix(state))
+        attacker_actions = tuple(env.attacker_actions(state))
+        return int(rng.choice(attacker_actions, p=game["attacker_strategy"]))
 
     return policy
 
@@ -145,6 +208,22 @@ def make_bvi_defender_policy(result: BVIResult) -> DefenderPolicy:
     return policy
 
 
+def make_bvi_attacker_policy(result: BVIResult) -> AttackerPolicy:
+    max_queue_length = _bvi_bound(result)
+
+    def policy(
+        state: Hashable, rng: np.random.Generator, env: BaseAdversarialQueueEnv
+    ) -> int:
+        clipped_state = _bounded_state(state, max_queue_length)
+        game = solve_zero_sum_matrix_game(
+            _bvi_payoff_matrix(env, result, clipped_state, max_queue_length)
+        )
+        attacker_actions = tuple(env.attacker_actions(clipped_state))
+        return int(rng.choice(attacker_actions, p=game["attacker_strategy"]))
+
+    return policy
+
+
 def _summarize_rows(rows: list[dict[str, Any]]) -> dict[str, float]:
     average_costs = np.array([row["average_cost"] for row in rows], dtype=float)
     discounted_costs = np.array([row["discounted_cost"] for row in rows], dtype=float)
@@ -168,6 +247,18 @@ def _state_load(state: Hashable) -> int:
     return int(state)
 
 
+def _json_state(state: Hashable) -> int | list[int]:
+    if isinstance(state, tuple):
+        return [int(value) for value in state]
+    return int(state)
+
+
+def _state_sort_key(state: Hashable) -> tuple:
+    if isinstance(state, tuple):
+        return (sum(int(value) for value in state), tuple(int(value) for value in state))
+    return (int(state),)
+
+
 def _bvi_bound(result: BVIResult) -> int:
     if result.max_queue_length is not None:
         return result.max_queue_length
@@ -184,3 +275,28 @@ def _bounded_state(state: Hashable, max_queue_length: int) -> Hashable:
     if isinstance(state, tuple):
         return tuple(min(int(value), max_queue_length) for value in state)
     return min(int(state), max_queue_length)
+
+
+def _bvi_payoff_matrix(
+    env: BaseAdversarialQueueEnv,
+    result: BVIResult,
+    state: Hashable,
+    max_queue_length: int,
+) -> np.ndarray:
+    attacker_actions = tuple(env.attacker_actions(state))
+    defender_actions = tuple(env.defender_actions(state))
+    payoff = np.zeros((len(attacker_actions), len(defender_actions)), dtype=float)
+    for ai, attacker_action in enumerate(attacker_actions):
+        for bi, defender_action in enumerate(defender_actions):
+            expected_next = 0.0
+            for next_state, prob in env.transition_probabilities(
+                state, attacker_action, defender_action
+            ).items():
+                expected_next += prob * result.values[
+                    _bounded_state(next_state, max_queue_length)
+                ]
+            payoff[ai, bi] = (
+                env.cost(state, attacker_action, defender_action)
+                + env.discount * expected_next
+            )
+    return payoff

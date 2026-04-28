@@ -1,0 +1,33 @@
+experiment:
+  name: routing_comparison_normalized_amq_eval50_debug
+  output_dir: results
+
+configs:
+  bvi: configs/routing_smoke.yaml
+  amq: configs/routing_amq_normalized_debug.yaml
+  nnq: configs/routing_nnq_debug.yaml
+
+shared:
+  env:
+    name: routing
+    lambda_arrival: 2.0
+    mu_rates: [1.0, 1.5, 2.0]
+    gamma: 0.95
+    attack_cost: 0.5
+    defend_cost: 0.2
+    congestion_cost: sum
+    initial_state: [0, 0, 0]
+    uniformization_rate: 6.5
+  bvi:
+    max_queue_length: 3
+    tolerance: 0.000001
+    max_iterations: 1000
+    boundary_mode: clip
+  evaluation:
+    num_episodes: 50
+    horizon: 50
+    seed: 300
+    tail_threshold: 8
+    boundary_state: 10
+  policy_grid:
+    high_probability_threshold: 0.5

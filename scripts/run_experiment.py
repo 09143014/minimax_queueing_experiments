@@ -25,9 +25,13 @@ from adversarial_queueing.algorithms.nnq import NNQTrainer
 from adversarial_queueing.envs.routing import RoutingEnv
 from adversarial_queueing.envs.service_rate_control import ServiceRateControlEnv
 from adversarial_queueing.evaluation.rollout import (
+    always_attacker_policy,
     evaluate_policy,
+    make_amq_attacker_policy,
     make_amq_defender_policy,
+    make_bvi_attacker_policy,
     make_bvi_defender_policy,
+    make_nnq_attacker_policy,
     make_nnq_defender_policy,
     random_attacker_policy,
 )
@@ -117,6 +121,33 @@ def main() -> int:
                 config=evaluation_config,
             )
             write_jsonl(run_dir / "evaluation.jsonl", evaluation.rows)
+            always_attack_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_bvi_defender_policy(result),
+                attacker_policy=always_attacker_policy,
+                config=evaluation_config,
+            )
+            write_jsonl(
+                run_dir / "evaluation_always_attack.jsonl",
+                always_attack_evaluation.rows,
+            )
+            minimax_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_bvi_defender_policy(result),
+                attacker_policy=make_bvi_attacker_policy(result),
+                config=evaluation_config,
+            )
+            write_jsonl(run_dir / "evaluation_minimax.jsonl", minimax_evaluation.rows)
+            bvi_attacker_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_bvi_defender_policy(result),
+                attacker_policy=make_bvi_attacker_policy(result),
+                config=evaluation_config,
+            )
+            write_jsonl(
+                run_dir / "evaluation_bvi_attacker.jsonl",
+                bvi_attacker_evaluation.rows,
+            )
             policy_rows, policy_summary = bvi_routing_policy_inspection(
                 env,
                 result,
@@ -124,6 +155,9 @@ def main() -> int:
             )
             write_jsonl(run_dir / "policy_inspection.jsonl", policy_rows)
             summary["evaluation"] = evaluation.summary
+            summary["always_attack_evaluation"] = always_attack_evaluation.summary
+            summary["minimax_evaluation"] = minimax_evaluation.summary
+            summary["bvi_attacker_evaluation"] = bvi_attacker_evaluation.summary
             summary["policy_inspection"] = policy_summary
             write_json(run_dir / "summary.json", summary)
             print(f"wrote {run_dir}")
@@ -209,9 +243,39 @@ def main() -> int:
             write_jsonl(run_dir / "policy_comparison.jsonl", comparison_rows)
             q_rows, q_summary = routing_amq_q_diagnostic(env, trainer, bvi_reference)
             write_jsonl(run_dir / "q_diagnostic.jsonl", q_rows)
+            always_attack_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_amq_defender_policy(trainer),
+                attacker_policy=always_attacker_policy,
+                config=evaluation_config,
+            )
+            write_jsonl(
+                run_dir / "evaluation_always_attack.jsonl",
+                always_attack_evaluation.rows,
+            )
+            minimax_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_amq_defender_policy(trainer),
+                attacker_policy=make_amq_attacker_policy(trainer),
+                config=evaluation_config,
+            )
+            write_jsonl(run_dir / "evaluation_minimax.jsonl", minimax_evaluation.rows)
+            bvi_attacker_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_amq_defender_policy(trainer),
+                attacker_policy=make_bvi_attacker_policy(bvi_reference),
+                config=evaluation_config,
+            )
+            write_jsonl(
+                run_dir / "evaluation_bvi_attacker.jsonl",
+                bvi_attacker_evaluation.rows,
+            )
             policy_summary_key = "policy_inspection"
             policy_summary_value = policy_summary
             extra_summary = {
+                "always_attack_evaluation": always_attack_evaluation.summary,
+                "minimax_evaluation": minimax_evaluation.summary,
+                "bvi_attacker_evaluation": bvi_attacker_evaluation.summary,
                 "policy_comparison": comparison_summary,
                 "q_diagnostic": q_summary,
                 "bvi_reference": {
@@ -295,6 +359,33 @@ def main() -> int:
             write_jsonl(run_dir / "policy_comparison.jsonl", comparison_rows)
             q_rows, q_summary = routing_nnq_q_diagnostic(env, trainer, bvi_result)
             write_jsonl(run_dir / "q_diagnostic.jsonl", q_rows)
+            always_attack_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_nnq_defender_policy(trainer),
+                attacker_policy=always_attacker_policy,
+                config=evaluation_config,
+            )
+            write_jsonl(
+                run_dir / "evaluation_always_attack.jsonl",
+                always_attack_evaluation.rows,
+            )
+            minimax_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_nnq_defender_policy(trainer),
+                attacker_policy=make_nnq_attacker_policy(trainer),
+                config=evaluation_config,
+            )
+            write_jsonl(run_dir / "evaluation_minimax.jsonl", minimax_evaluation.rows)
+            bvi_attacker_evaluation = evaluate_policy(
+                env,
+                defender_policy=make_nnq_defender_policy(trainer),
+                attacker_policy=make_bvi_attacker_policy(bvi_result),
+                config=evaluation_config,
+            )
+            write_jsonl(
+                run_dir / "evaluation_bvi_attacker.jsonl",
+                bvi_attacker_evaluation.rows,
+            )
         else:
             raise ValueError(f"NNQ runner does not support env.name: {env_name}")
         final_loss = result.metrics[-1]["loss"] if result.metrics else 0.0
@@ -317,6 +408,9 @@ def main() -> int:
             "implementation": "numpy_mlp_smoke",
         }
         if env_name == "routing":
+            summary["always_attack_evaluation"] = always_attack_evaluation.summary
+            summary["minimax_evaluation"] = minimax_evaluation.summary
+            summary["bvi_attacker_evaluation"] = bvi_attacker_evaluation.summary
             summary["policy_comparison"] = comparison_summary
             summary["q_diagnostic"] = q_summary
             summary["bvi_reference"] = {

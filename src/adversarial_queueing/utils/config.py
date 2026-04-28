@@ -92,6 +92,17 @@ def build_amq_config(data: dict[str, Any]) -> AMQConfig:
             if amq.get("exploring_starts_max_queue_length") is None
             else int(amq["exploring_starts_max_queue_length"])
         ),
+        fitted_calibration_passes=int(amq.get("fitted_calibration_passes", 0)),
+        fitted_calibration_max_queue_length=(
+            None
+            if amq.get("fitted_calibration_max_queue_length") is None
+            else int(amq["fitted_calibration_max_queue_length"])
+        ),
+        fitted_calibration_eta=(
+            None
+            if amq.get("fitted_calibration_eta") is None
+            else float(amq["fitted_calibration_eta"])
+        ),
     )
 
 

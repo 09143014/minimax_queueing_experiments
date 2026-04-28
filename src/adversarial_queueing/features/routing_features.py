@@ -68,6 +68,12 @@ def routing_features(
         joint = _one_hot(joint_action, 4)
         return np.outer(joint, base).ravel()
 
+    if feature_set == "normalized_full_action_interaction":
+        base = _normalized_routing_state_basis(x)
+        joint_action = attacker_action * 2 + defender_action
+        joint = _one_hot(joint_action, 4)
+        return np.outer(joint, base).ravel()
+
     raise ValueError(f"unknown routing feature_set: {feature_set}")
 
 
@@ -95,6 +101,24 @@ def _routing_state_basis(x: np.ndarray) -> np.ndarray:
                 dtype=float,
             ),
             x,
+        ]
+    )
+
+
+def _normalized_routing_state_basis(x: np.ndarray) -> np.ndarray:
+    scale = max(float(x.size), 1.0)
+    return np.concatenate(
+        [
+            np.array(
+                [
+                    1.0,
+                    float(x.sum() / scale),
+                    float(np.dot(x, x) / scale),
+                    (float(x.max() - x.min()) / scale) if x.size else 0.0,
+                ],
+                dtype=float,
+            ),
+            x / scale,
         ]
     )
 

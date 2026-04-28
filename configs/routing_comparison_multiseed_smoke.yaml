@@ -1,0 +1,6 @@
+experiment:
+  name: routing_comparison_multiseed_smoke
+  output_dir: results
+
+base_config: configs/routing_comparison_smoke.yaml
+seeds: [0, 1]

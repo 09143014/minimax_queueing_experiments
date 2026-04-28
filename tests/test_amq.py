@@ -96,6 +96,36 @@ class AMQTests(unittest.TestCase):
         logged_state = result.metrics[0]["state"]
         self.assertTrue(all(0 <= value <= 3 for value in logged_state))
 
+    def test_routing_fitted_calibration_logs_metrics(self):
+        env = RoutingEnv(
+            RoutingConfig(
+                lambda_arrival=2.0,
+                mu_rates=(1.0, 1.5, 2.0),
+                gamma=0.95,
+                uniformization_rate=6.5,
+                bvi_max_queue_length=2,
+            )
+        )
+        trainer = LinearAMQTrainer(
+            env,
+            AMQConfig(
+                feature_set="normalized_full_action_interaction",
+                total_steps=10,
+                eta0=0.001,
+                seed=123,
+                fitted_calibration_passes=1,
+                fitted_calibration_max_queue_length=1,
+                fitted_calibration_eta=0.0001,
+            ),
+        )
+
+        result = trainer.train()
+
+        self.assertEqual(result.metrics[-1]["phase"], "fitted_calibration")
+        self.assertEqual(result.metrics[-1]["passes"], 1)
+        self.assertGreater(result.metrics[-1]["num_updates"], 0)
+        self.assertTrue(np.isfinite(result.weights).all())
+
 
 if __name__ == "__main__":
     unittest.main()
